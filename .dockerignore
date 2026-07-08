@@ -1,0 +1,16 @@
+.git
+**/__pycache__
+**/*.pyc
+backend/.venv
+backend/data
+node_modules
+frontend/node_modules
+frontend/dist
+frontend/.vite
+ingestion/data/raw
+ingestion/data/processed
+ingestion/data/chroma
+*.env
+!*.env.example
+*.log
+.DS_Store

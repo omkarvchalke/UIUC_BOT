@@ -1,0 +1,23 @@
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+pydantic>=2.9,<3.0
+pydantic-settings>=2.5,<3.0
+python-dotenv>=1.0,<2.0
+
+# Ingestion pipeline (shared venv — see ingestion/README.md)
+requests>=2.32,<3.0
+beautifulsoup4>=4.12,<5.0
+trafilatura>=1.12,<3.0
+
+# RAG: local embeddings + vector store
+sentence-transformers>=3.0,<4.0
+chromadb>=0.5,<0.6
+
+# LLM providers (app/llm/) — groq is the default; openai package is also
+# used as the client for the Google/OpenRouter providers (both speak the
+# OpenAI-compatible chat completions API)
+groq>=0.11,<1.0
+openai>=1.50,<2.0
+
+# Testing
+pytest>=8.3,<9.0

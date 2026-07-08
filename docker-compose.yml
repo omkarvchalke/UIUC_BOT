@@ -1,0 +1,37 @@
+# Local multi-service orchestration for CampusGuide AI. This is a
+# convenience for running the full app with one command during local
+# development/demos — it is NOT the intended production deployment path.
+# See the root README's Deployment section for that (Vercel + Render/
+# Railway/Fly.io).
+#
+# Usage:
+#   cp backend/.env.example backend/.env   # then set a real OPENAI_API_KEY
+#   docker compose up --build
+#
+# The vector index isn't built by this compose file — build it on the host
+# first (cd ingestion && python refresh_index.py) so ./ingestion/data/chroma
+# exists; the backend container mounts it read-write.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    volumes:
+      - ./ingestion/data/chroma:/repo/ingestion/data/chroma
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped

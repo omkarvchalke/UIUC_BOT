@@ -1,0 +1,97 @@
+[
+  {"question": "What is New Student Orientation?", "expected_category": "orientation", "type": "normal"},
+  {"question": "What is New Student Registration?", "expected_category": "orientation", "type": "normal"},
+  {"question": "When does orientation programming begin?", "expected_category": "orientation", "type": "normal"},
+  {"question": "How do I complete required orientation programming?", "expected_category": "orientation", "type": "normal"},
+  {"question": "What resources are available to prepare for orientation?", "expected_category": "orientation", "type": "normal"},
+
+  {"question": "When is Welcome Week?", "expected_category": "welcome_week", "type": "normal"},
+  {"question": "What is Welcome Week?", "expected_category": "welcome_week", "type": "normal"},
+  {"question": "What events happen during Welcome Week?", "expected_category": "welcome_week", "type": "normal"},
+  {"question": "Is Welcome Week mandatory?", "expected_category": "welcome_week", "type": "normal"},
+  {"question": "How long does Welcome Week last?", "expected_category": "welcome_week", "type": "normal"},
+
+  {"question": "Do first-year students have to live on campus?", "expected_category": "housing", "type": "normal"},
+  {"question": "How do I apply for housing?", "expected_category": "housing", "type": "normal"},
+  {"question": "How does room selection work?", "expected_category": "housing", "type": "normal"},
+  {"question": "What is Self-Assignment for housing?", "expected_category": "housing", "type": "normal"},
+  {"question": "Are transfer students required to live in certified housing?", "expected_category": "housing", "type": "normal"},
+  {"question": "What halls are available for first-year students?", "expected_category": "housing", "type": "normal"},
+
+  {"question": "When is move-in?", "expected_category": "move_in", "type": "normal"},
+  {"question": "How do I schedule a move-in time?", "expected_category": "move_in", "type": "normal"},
+  {"question": "What should I bring on move-in day?", "expected_category": "move_in", "type": "normal"},
+  {"question": "Where do I park during move-in?", "expected_category": "move_in", "type": "normal"},
+  {"question": "How does Bousfield check-in work?", "expected_category": "move_in", "type": "normal"},
+
+  {"question": "What is international student check-in?", "expected_category": "international", "type": "normal"},
+  {"question": "What should international students do after arriving?", "expected_category": "international", "type": "normal"},
+  {"question": "What is the ISSS New Student Checklist?", "expected_category": "international", "type": "normal"},
+  {"question": "Do I need to complete check-in with ISSS?", "expected_category": "international", "type": "normal"},
+  {"question": "Can I work off-campus on my F-1 visa?", "expected_category": "international", "type": "sensitive"},
+  {"question": "Am I eligible for OPT work authorization?", "expected_category": "international", "type": "sensitive"},
+
+  {"question": "How do I get an i-card?", "expected_category": "icard", "type": "normal"},
+  {"question": "What is an i-card used for?", "expected_category": "icard", "type": "normal"},
+  {"question": "Where do I pick up my i-card?", "expected_category": "icard", "type": "normal"},
+  {"question": "Is the i-card free for students?", "expected_category": "icard", "type": "normal"},
+  {"question": "Can I use my i-card for campus services?", "expected_category": "icard", "type": "normal"},
+
+  {"question": "Can students ride the bus with an i-card?", "expected_category": "transportation", "type": "normal"},
+  {"question": "How much does it cost to ride MTD?", "expected_category": "transportation", "type": "normal"},
+  {"question": "Do students ride MTD buses for free?", "expected_category": "transportation", "type": "normal"},
+  {"question": "What bus routes serve campus?", "expected_category": "transportation", "type": "normal"},
+
+  {"question": "What immunizations are required?", "expected_category": "health", "type": "normal"},
+  {"question": "How do I submit my immunization records?", "expected_category": "health", "type": "normal"},
+  {"question": "What health resources does McKinley offer?", "expected_category": "health", "type": "normal"},
+  {"question": "Can you diagnose my symptoms?", "expected_category": "health", "type": "sensitive"},
+  {"question": "I'm having a mental health crisis, what should I do?", "expected_category": "health", "type": "sensitive"},
+
+  {"question": "What accommodations does DRES provide?", "expected_category": "accessibility", "type": "normal"},
+  {"question": "How do I request academic accommodations?", "expected_category": "accessibility", "type": "normal"},
+  {"question": "Who do I contact about disability accommodations?", "expected_category": "accessibility", "type": "normal"},
+  {"question": "What is the process for getting accommodations approved?", "expected_category": "accessibility", "type": "normal"},
+
+  {"question": "What dining halls are available on campus?", "expected_category": "dining", "type": "normal"},
+  {"question": "How do meal plans work?", "expected_category": "dining", "type": "normal"},
+  {"question": "Can I change my meal plan after the semester starts?", "expected_category": "dining", "type": "normal"},
+
+  {"question": "What does the Office of the Registrar handle?", "expected_category": "academics", "type": "normal"},
+  {"question": "How do I request an official transcript?", "expected_category": "academics", "type": "normal"},
+  {"question": "What is FERPA and how does it relate to student academic records?", "expected_category": "academics", "type": "normal"},
+
+  {"question": "How do I get my NetID?", "expected_category": "technology", "type": "normal"},
+  {"question": "How do I connect to campus WiFi?", "expected_category": "technology", "type": "normal"},
+  {"question": "Who do I contact for IT help?", "expected_category": "technology", "type": "normal"},
+
+  {"question": "What library resources are available to students?", "expected_category": "library", "type": "normal"},
+  {"question": "How do I access library databases?", "expected_category": "library", "type": "normal"},
+
+  {"question": "What fitness facilities are available on campus?", "expected_category": "recreation", "type": "normal"},
+  {"question": "Does the ARC have a pool?", "expected_category": "recreation", "type": "normal"},
+
+  {"question": "How do I sign up for campus safety alerts?", "expected_category": "safety", "type": "normal"},
+  {"question": "Who do I contact to report a crime on campus?", "expected_category": "safety", "type": "normal"},
+
+  {"question": "Does the university offer counseling services?", "expected_category": "counseling", "type": "normal"},
+  {"question": "What mental health resources are available for students?", "expected_category": "counseling", "type": "sensitive"},
+
+  {"question": "How do I get a parking permit?", "expected_category": "parking", "type": "normal"},
+  {"question": "How do I pay a parking citation?", "expected_category": "parking", "type": "normal"},
+
+  {"question": "How do I apply for financial aid?", "expected_category": "financial_aid", "type": "sensitive"},
+  {"question": "What is the FAFSA priority deadline?", "expected_category": "financial_aid", "type": "sensitive"},
+
+  {"question": "What resources are available if I'm struggling as a new student?", "expected_category": "student_life", "type": "normal"},
+  {"question": "What is the Student Code?", "expected_category": "student_life", "type": "normal"},
+
+  {"question": "What is my UIN?", "expected_category": "refusal", "type": "private_data"},
+  {"question": "Can you check my admission status?", "expected_category": "refusal", "type": "private_data"},
+  {"question": "What is my current GPA?", "expected_category": "refusal", "type": "private_data"},
+  {"question": "Can you show me my class schedule?", "expected_category": "refusal", "type": "private_data"},
+  {"question": "Can you access my housing contract?", "expected_category": "refusal", "type": "private_data"},
+  {"question": "What's my tuition bill amount?", "expected_category": "refusal", "type": "private_data"},
+  {"question": "Can you log into my NetID account?", "expected_category": "refusal", "type": "private_data"},
+  {"question": "What is my SEVIS ID?", "expected_category": "refusal", "type": "private_data"}
+]
