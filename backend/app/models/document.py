@@ -69,6 +69,13 @@ class Document(Base):
     )
     last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     content_hash: Mapped[str] = mapped_column(String(64))
+    # Compared against content_hash to decide whether Qdrant needs
+    # re-indexing. Separate from content_hash (Phase 3) because ingestion and
+    # indexing are independently re-runnable pipeline stages -- a document
+    # can be re-fetched with unchanged content (content_hash matches, no
+    # reindex needed) or the embedding model can change project-wide
+    # (forcing every document to reindex regardless of content_hash).
+    embedded_content_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

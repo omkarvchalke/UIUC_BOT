@@ -5,11 +5,12 @@ and international students at the University of Illinois Urbana-Champaign (UIUC)
 grounded exclusively in official, publicly available UIUC resources via Retrieval-Augmented
 Generation, and the app never asks for personally identifiable information.
 
-> **Status:** Phases 1-3 complete (architecture/Docker, backend database layer, document
-> ingestion). The ingestion pipeline fetches official UIUC HTML/PDF pages, cleans and chunks
-> them, and persists documents + chunks in PostgreSQL with a source manifest of 19 verified,
-> live `illinois.edu` URLs. Embeddings, Qdrant, and hybrid retrieval are next; RAG, LangGraph
-> orchestration, and the chat UI follow after that.
+> **Status:** Phases 1-4 complete (architecture/Docker, backend database layer, document
+> ingestion, embeddings + Qdrant + hybrid retrieval). Local CPU-only embeddings
+> (BAAI/bge-small-en-v1.5) are generated for every chunk and upserted into Qdrant; queries are
+> answered by fusing Qdrant semantic search with in-process BM25 keyword search via Reciprocal
+> Rank Fusion, with topic/student-type metadata filtering. LangGraph orchestration, Groq
+> generation, and the chat UI are next.
 
 ## Tech Stack
 
@@ -19,7 +20,7 @@ Generation, and the app never asks for personally identifiable information.
 | Backend           | Python, FastAPI                                     |
 | Orchestration     | LangGraph, LangChain (Phase 5+)                     |
 | LLM               | Groq (Phase 6+)                                     |
-| Embeddings        | Local sentence-transformers (BAAI/bge-small-en-v1.5) (Phase 4+) |
+| Embeddings        | Local sentence-transformers (BAAI/bge-small-en-v1.5), CPU-only |
 | Vector database   | Qdrant                                              |
 | Relational database | PostgreSQL                                        |
 | Package manager   | uv (backend), npm (frontend)                        |
@@ -40,14 +41,14 @@ Generation, and the app never asks for personally identifiable information.
 │   │   ├── core/              # Config, logging, cross-cutting concerns
 │   │   ├── agents/            # LangGraph node implementations
 │   │   ├── graph/              # LangGraph graph definition & state
-│   │   ├── retrieval/          # Hybrid search, re-ranking
-│   │   ├── embeddings/         # Local embedding generation
+│   │   ├── retrieval/          # BM25 + hybrid (RRF) search
+│   │   ├── embeddings/         # Local embedding generation (sentence-transformers)
 │   │   ├── database/            # DB session/engine setup
 │   │   ├── ingestion/             # HTML/PDF loaders, cleaning, chunking, source manifest
 │   │   ├── prompts/              # Prompt templates
 │   │   └── utils/                 # Shared helpers
 │   ├── migrations/            # Alembic migrations (async env.py)
-│   ├── scripts/                # run_ingestion.py CLI entrypoint
+│   ├── scripts/                # run_ingestion.py / run_indexing.py CLI entrypoints
 │   ├── tests/
 │   ├── alembic.ini
 │   ├── pyproject.toml (uv)
@@ -128,14 +129,41 @@ Re-running is cheap: each source's cleaned text is hashed, and unchanged sources
 `GET /api/v1/documents/{id}`. Add a new source by appending a `SourceConfig` entry to the
 manifest — no other code changes needed.
 
+## Embeddings, Qdrant, and Hybrid Retrieval
+
+Embeds every ingested chunk (local, CPU-only `BAAI/bge-small-en-v1.5` — no paid embedding API)
+and upserts into Qdrant:
+
+```bash
+cd backend
+uv run python -m scripts.run_indexing
+```
+
+Idempotent the same way ingestion is: a `documents.embedded_content_hash` column is compared
+against `content_hash`, so re-running only embeds documents that actually changed. Query the
+result with `GET /api/v1/retrieve?query=...&topic=...&student_type=...` — it fuses Qdrant
+semantic search with an in-process BM25 index via Reciprocal Rank Fusion and returns each
+result's per-ranker rank and fused score, for inspecting retrieval quality directly.
+
 ## Testing
 
 ```bash
 cd backend && uv run pytest
 ```
 
-Tests run against a real PostgreSQL instance (no mocking the database — set `DATABASE_URL` in
-`backend/.env`, e.g. pointing at the docker-compose Postgres on `localhost:5433`).
+Tests run against real PostgreSQL and Qdrant instances (no mocking the database or vector
+store) — but a **dedicated test database**, never the dev database: the table-cleanup fixtures
+between tests are destructive (`TRUNCATE ... CASCADE`), and once wiped the real ingested UIUC
+corpus when tests and manual smoke-testing shared one database. Create it once per Postgres
+instance (name is `<dev db>_test`, derived automatically by `Settings.test_database_url`):
+
+```bash
+docker exec uiuc_bot-postgres-1 psql -U illiniguide -d postgres -c "CREATE DATABASE illiniguide_test OWNER illiniguide;"
+DATABASE_URL="postgresql+asyncpg://illiniguide:change-me@localhost:5433/illiniguide_test" uv run alembic upgrade head
+```
+
+Qdrant tests run against a separate `illiniguide_documents_test` collection, created and torn
+down automatically per test.
 
 ## Environment Variables
 

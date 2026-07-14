@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db_session
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.session_repository import SessionRepository
+from app.repositories.vector_repository import VectorRepository
+from app.retrieval.hybrid_search import HybridRetriever
 from app.services.document_service import DocumentService
 from app.services.session_service import SessionService
 
@@ -38,3 +40,19 @@ def get_document_service(repository: DocumentRepositoryDep) -> DocumentService:
 
 
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
+
+
+def get_vector_repository() -> VectorRepository:
+    return VectorRepository()
+
+
+VectorRepositoryDep = Annotated[VectorRepository, Depends(get_vector_repository)]
+
+
+def get_hybrid_retriever(
+    document_repository: DocumentRepositoryDep, vector_repository: VectorRepositoryDep
+) -> HybridRetriever:
+    return HybridRetriever(document_repository, vector_repository)
+
+
+HybridRetrieverDep = Annotated[HybridRetriever, Depends(get_hybrid_retriever)]

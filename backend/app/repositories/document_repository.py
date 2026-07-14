@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.conversation_session import StudentType
 from app.models.document import Document, DocumentChunk, SourceType, Topic
@@ -90,3 +90,27 @@ class DocumentRepository:
                 )
             )
         await self._db.commit()
+
+    async def list_documents_needing_index(self) -> list[Document]:
+        result = await self._db.execute(
+            select(Document)
+            .where(
+                Document.embedded_content_hash.is_(None)
+                | (Document.embedded_content_hash != Document.content_hash)
+            )
+            .options(selectinload(Document.chunks))
+        )
+        return list(result.scalars().all())
+
+    async def mark_indexed(self, document_id: uuid.UUID, content_hash: str) -> None:
+        document = await self.get_by_id(document_id)
+        if document is None:
+            return
+        document.embedded_content_hash = content_hash
+        await self._db.commit()
+
+    async def list_all_chunks_with_documents(self) -> list[DocumentChunk]:
+        result = await self._db.execute(
+            select(DocumentChunk).options(joinedload(DocumentChunk.document))
+        )
+        return list(result.scalars().all())
