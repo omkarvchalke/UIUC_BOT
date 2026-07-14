@@ -1,0 +1,36 @@
+# --- Python / backend ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+uv.lock.bak
+
+# --- Node / frontend ---
+node_modules/
+.next/
+out/
+next-env.d.ts
+frontend/.env
+frontend/.env.local
+
+# --- Env files (never commit real secrets) ---
+.env
+backend/.env
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# --- Docker volumes / local data ---
+qdrant_storage/
+postgres_data/
+
+# --- OS / editor ---
+.DS_Store
+.vscode/
+.idea/
+
+# --- Logs ---
+*.log
