@@ -5,10 +5,11 @@ and international students at the University of Illinois Urbana-Champaign (UIUC)
 grounded exclusively in official, publicly available UIUC resources via Retrieval-Augmented
 Generation, and the app never asks for personally identifiable information.
 
-> **Status:** Phase 1 (architecture, folder structure, Docker) and Phase 2 (backend database layer)
-> complete. The backend now persists anonymous session/student-profile state in PostgreSQL via
-> SQLAlchemy (async) + Alembic migrations, behind a repository/service layer. RAG, LangGraph
-> orchestration, and the chat UI arrive in later phases.
+> **Status:** Phases 1-3 complete (architecture/Docker, backend database layer, document
+> ingestion). The ingestion pipeline fetches official UIUC HTML/PDF pages, cleans and chunks
+> them, and persists documents + chunks in PostgreSQL with a source manifest of 19 verified,
+> live `illinois.edu` URLs. Embeddings, Qdrant, and hybrid retrieval are next; RAG, LangGraph
+> orchestration, and the chat UI follow after that.
 
 ## Tech Stack
 
@@ -42,9 +43,11 @@ Generation, and the app never asks for personally identifiable information.
 │   │   ├── retrieval/          # Hybrid search, re-ranking
 │   │   ├── embeddings/         # Local embedding generation
 │   │   ├── database/            # DB session/engine setup
+│   │   ├── ingestion/             # HTML/PDF loaders, cleaning, chunking, source manifest
 │   │   ├── prompts/              # Prompt templates
 │   │   └── utils/                 # Shared helpers
 │   ├── migrations/            # Alembic migrations (async env.py)
+│   ├── scripts/                # run_ingestion.py CLI entrypoint
 │   ├── tests/
 │   ├── alembic.ini
 │   ├── pyproject.toml (uv)
@@ -109,6 +112,21 @@ cd backend
 uv run alembic upgrade head                                  # apply all migrations
 uv run alembic revision --autogenerate -m "add some_table"   # generate a new migration
 ```
+
+## Document Ingestion
+
+Fetches every source in `app/ingestion/sources.py` (a manifest of official, verified UIUC HTML
+and PDF pages), cleans and chunks the text, and persists documents + chunks in PostgreSQL:
+
+```bash
+cd backend
+uv run python -m scripts.run_ingestion
+```
+
+Re-running is cheap: each source's cleaned text is hashed, and unchanged sources are skipped
+(no re-chunk, no DB write). Inspect what's been ingested via `GET /api/v1/documents` and
+`GET /api/v1/documents/{id}`. Add a new source by appending a `SourceConfig` entry to the
+manifest — no other code changes needed.
 
 ## Testing
 
