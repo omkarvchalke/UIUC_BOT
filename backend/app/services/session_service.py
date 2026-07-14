@@ -31,3 +31,11 @@ class SessionService:
         if session is None:
             raise SessionNotFoundError(session_id)
         return session
+
+    async def update_student_type(
+        self, session_id: uuid.UUID, student_type: StudentType
+    ) -> ConversationSession:
+        session = await self._repository.update_student_type(session_id, student_type)
+        if session is None:
+            raise SessionNotFoundError(session_id)
+        return session

@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -14,6 +15,7 @@ from sqlalchemy.pool import NullPool
 from app.api.dependencies import get_vector_repository
 from app.core.config import get_settings
 from app.database.session import get_db_session
+from app.graph.checkpointer import build_checkpointer
 from app.main import app
 from app.repositories.vector_repository import VectorRepository
 
@@ -84,3 +86,16 @@ async def override_vector_repository(
     app.dependency_overrides[get_vector_repository] = lambda: test_vector_repository
     yield
     app.dependency_overrides.pop(get_vector_repository, None)
+
+
+@pytest_asyncio.fixture
+async def test_checkpointer() -> AsyncGenerator[AsyncPostgresSaver]:
+    # Function-scoped, not session-scoped: AsyncPostgresSaver holds one
+    # persistent psycopg connection (and an asyncio.Lock bound to whatever
+    # loop was running when it opened) for its whole lifetime. Sharing that
+    # across multiple test functions hit the same "bound to a different
+    # event loop" failure class as the raw-session mistakes fixed earlier in
+    # this test suite -- the fix here is the same: don't hold a live
+    # connection open across a fixture boundary wider than one test.
+    async with build_checkpointer(database_url=get_settings().test_database_url) as checkpointer:
+        yield checkpointer

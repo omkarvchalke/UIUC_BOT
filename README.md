@@ -5,12 +5,13 @@ and international students at the University of Illinois Urbana-Champaign (UIUC)
 grounded exclusively in official, publicly available UIUC resources via Retrieval-Augmented
 Generation, and the app never asks for personally identifiable information.
 
-> **Status:** Phases 1-4 complete (architecture/Docker, backend database layer, document
-> ingestion, embeddings + Qdrant + hybrid retrieval). Local CPU-only embeddings
-> (BAAI/bge-small-en-v1.5) are generated for every chunk and upserted into Qdrant; queries are
-> answered by fusing Qdrant semantic search with in-process BM25 keyword search via Reciprocal
-> Rank Fusion, with topic/student-type metadata filtering. LangGraph orchestration, Groq
-> generation, and the chat UI are next.
+> **Status:** Phases 1-5 complete (architecture/Docker, backend database layer, document
+> ingestion, embeddings + Qdrant + hybrid retrieval, LangGraph orchestration). The conversation
+> graph routes each message through profile checks, intent detection, embedding-based topic
+> classification, hybrid retrieval, cross-encoder reranking, and citation generation, with
+> conditional-edge clarification and Postgres-backed multi-turn memory. Generation uses a
+> deterministic placeholder for now — Groq integration and prompt engineering (Phase 6) come
+> next, then the chat UI (Phase 7).
 
 ## Tech Stack
 
@@ -18,7 +19,7 @@ Generation, and the app never asks for personally identifiable information.
 |-------------------|------------------------------------------------------|
 | Frontend          | Next.js (App Router), TypeScript, TailwindCSS, shadcn/ui |
 | Backend           | Python, FastAPI                                     |
-| Orchestration     | LangGraph, LangChain (Phase 5+)                     |
+| Orchestration     | LangGraph, LangChain-core                           |
 | LLM               | Groq (Phase 6+)                                     |
 | Embeddings        | Local sentence-transformers (BAAI/bge-small-en-v1.5), CPU-only |
 | Vector database   | Qdrant                                              |
@@ -39,9 +40,8 @@ Generation, and the app never asks for personally identifiable information.
 │   │   ├── models/           # ORM / domain models
 │   │   ├── schemas/          # Pydantic request/response schemas
 │   │   ├── core/              # Config, logging, cross-cutting concerns
-│   │   ├── agents/            # LangGraph node implementations
-│   │   ├── graph/              # LangGraph graph definition & state
-│   │   ├── retrieval/          # BM25 + hybrid (RRF) search
+│   │   ├── graph/              # LangGraph state, nodes, edges, graph assembly, checkpointer
+│   │   ├── retrieval/          # BM25, hybrid (RRF) search, cross-encoder reranker, topic classifier
 │   │   ├── embeddings/         # Local embedding generation (sentence-transformers)
 │   │   ├── database/            # DB session/engine setup
 │   │   ├── ingestion/             # HTML/PDF loaders, cleaning, chunking, source manifest
@@ -144,6 +144,36 @@ against `content_hash`, so re-running only embeds documents that actually change
 result with `GET /api/v1/retrieve?query=...&topic=...&student_type=...` — it fuses Qdrant
 semantic search with an in-process BM25 index via Reciprocal Rank Fusion and returns each
 result's per-ranker rank and fused score, for inspecting retrieval quality directly.
+
+## Conversation Graph (LangGraph)
+
+`app/graph/graph.py::build_graph()` assembles a 12-node LangGraph `StateGraph` with conditional
+routing for intent detection, profile-aware clarification, hybrid retrieval, cross-encoder
+reranking, and citation generation. State (`app/graph/state.py::GraphState`) is a typed
+`TypedDict`; conversation history persists across turns via a Postgres-backed
+`AsyncPostgresSaver` checkpointer (`app/graph/checkpointer.py`), keyed by `thread_id` (the
+session ID) — not an in-memory `MemorySaver`, so it survives process restarts.
+
+Generation (`app/graph/generation.py::AnswerGenerator`) is a Protocol; Phase 5 ships a
+deterministic, non-LLM `ExtractiveAnswerGenerator` behind it so the graph's control flow could
+be verified without a Groq API key. Phase 6 swaps in a real LLM-backed implementation behind the
+same interface — no other node changes.
+
+Try it directly:
+
+```python
+from app.graph.graph import build_graph
+from app.graph.checkpointer import build_checkpointer
+# ... construct GraphDependencies (see tests/test_graph.py for a full example)
+async with build_checkpointer() as checkpointer:
+    graph = build_graph(deps, checkpointer=checkpointer)
+    result = await graph.ainvoke(
+        {"session_id": str(session_id), "messages": [HumanMessage(content="...")]},
+        config={"configurable": {"thread_id": str(session_id)}},
+    )
+```
+
+No `/chat` HTTP endpoint yet — that's Phase 6, once there's a real LLM behind it worth exposing.
 
 ## Testing
 

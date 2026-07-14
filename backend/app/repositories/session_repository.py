@@ -32,3 +32,14 @@ class SessionRepository:
 
     async def get_by_id(self, session_id: uuid.UUID) -> ConversationSession | None:
         return await self._db.get(ConversationSession, session_id)
+
+    async def update_student_type(
+        self, session_id: uuid.UUID, student_type: StudentType
+    ) -> ConversationSession | None:
+        session = await self.get_by_id(session_id)
+        if session is None:
+            return None
+        session.student_type = student_type
+        await self._db.commit()
+        await self._db.refresh(session)
+        return session
