@@ -5,9 +5,10 @@ and international students at the University of Illinois Urbana-Champaign (UIUC)
 grounded exclusively in official, publicly available UIUC resources via Retrieval-Augmented
 Generation, and the app never asks for personally identifiable information.
 
-> **Status:** Phase 1 (project architecture, folder structure, environment setup, Docker) complete.
-> The system currently exposes a backend health check and a frontend page that verifies
-> connectivity to it. RAG, LangGraph orchestration, and the chat UI arrive in later phases.
+> **Status:** Phase 1 (architecture, folder structure, Docker) and Phase 2 (backend database layer)
+> complete. The backend now persists anonymous session/student-profile state in PostgreSQL via
+> SQLAlchemy (async) + Alembic migrations, behind a repository/service layer. RAG, LangGraph
+> orchestration, and the chat UI arrive in later phases.
 
 ## Tech Stack
 
@@ -43,7 +44,9 @@ Generation, and the app never asks for personally identifiable information.
 │   │   ├── database/            # DB session/engine setup
 │   │   ├── prompts/              # Prompt templates
 │   │   └── utils/                 # Shared helpers
+│   ├── migrations/            # Alembic migrations (async env.py)
 │   ├── tests/
+│   ├── alembic.ini
 │   ├── pyproject.toml (uv)
 │   └── Dockerfile
 ├── frontend/
@@ -96,11 +99,25 @@ npm install
 npm run dev
 ```
 
+## Database Migrations
+
+Migrations run automatically on container start (`docker-entrypoint.sh` runs `alembic upgrade
+head` before launching uvicorn). To manage them manually against a running Postgres:
+
+```bash
+cd backend
+uv run alembic upgrade head                                  # apply all migrations
+uv run alembic revision --autogenerate -m "add some_table"   # generate a new migration
+```
+
 ## Testing
 
 ```bash
 cd backend && uv run pytest
 ```
+
+Tests run against a real PostgreSQL instance (no mocking the database — set `DATABASE_URL` in
+`backend/.env`, e.g. pointing at the docker-compose Postgres on `localhost:5433`).
 
 ## Environment Variables
 

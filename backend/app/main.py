@@ -1,19 +1,21 @@
-import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
+from app.api.sessions import router as sessions_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.core.middleware import RequestLoggingMiddleware
 
 configure_logging()
 logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     logger.info("app_startup", app_name=settings.app_name, environment=settings.environment)
     yield
@@ -38,24 +40,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    @app.middleware("http")
-    async def log_requests(request: Request, call_next):
-        start = time.perf_counter()
-        response = None
-        try:
-            response = await call_next(request)
-            return response
-        finally:
-            latency_ms = round((time.perf_counter() - start) * 1000, 2)
-            logger.info(
-                "http_request",
-                method=request.method,
-                path=request.url.path,
-                status_code=response.status_code if response else 500,
-                latency_ms=latency_ms,
-            )
+    app.add_middleware(RequestLoggingMiddleware)
 
     app.include_router(health_router, prefix="/api/v1")
+    app.include_router(sessions_router, prefix="/api/v1")
 
     return app
 

@@ -20,6 +20,9 @@ WORKDIR /app
 
 RUN useradd --create-home --uid 1000 appuser
 COPY --from=builder --chown=appuser:appuser /app /app
+COPY --chown=appuser:appuser alembic.ini ./
+COPY --chown=appuser:appuser migrations ./migrations
+COPY --chown=appuser:appuser docker-entrypoint.sh ./
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1
@@ -28,4 +31,5 @@ USER appuser
 
 EXPOSE 8000
 
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
