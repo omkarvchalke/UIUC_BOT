@@ -35,7 +35,12 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     Topic.INTERNATIONAL_STUDENT_SERVICES: "international student services and support",
     Topic.VISA: "visa status, I-20, immigration documents",
     Topic.CPT: "curricular practical training, CPT work authorization",
-    Topic.OPT: "optional practical training, OPT work authorization after graduation",
+    # "what is OPT" is deliberately in the description text, not just
+    # "optional practical training": bare acronym questions like "What is
+    # OPT?" scored 0.50 (below the 0.55 threshold) without it, incorrectly
+    # triggering an ambiguous-topic clarification instead of answering --
+    # found via the golden-set eval (app/evaluation/golden_set.py).
+    Topic.OPT: "what is OPT, optional practical training, OPT work authorization after graduation",
     Topic.TECHNOLOGY_SERVICES: "campus technology, wifi, email, IT help desk",
     Topic.LIBRARIES: "university library hours, services, and locations",
     Topic.TRANSPORTATION: "parking, campus buses, getting around campus",

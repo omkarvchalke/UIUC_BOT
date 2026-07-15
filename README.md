@@ -60,9 +60,10 @@ Generation, and the app never asks for personally identifiable information.
 │   │   ├── llm/                   # Groq client, prompt builder, GroqAnswerGenerator
 │   │   ├── ingestion/             # HTML/PDF loaders, cleaning, chunking, source manifest
 │   │   ├── prompts/              # Prompt templates (rag_system_prompt.txt)
+│   │   ├── evaluation/           # Golden-set answer-quality eval (cases + runner)
 │   │   └── utils/                 # Shared helpers
 │   ├── migrations/            # Alembic migrations (async env.py)
-│   ├── scripts/                # run_ingestion.py / run_indexing.py CLI entrypoints
+│   ├── scripts/                # run_ingestion.py / run_indexing.py / eval_answers.py CLI entrypoints
 │   ├── tests/
 │   ├── alembic.ini
 │   ├── pyproject.toml (uv)
@@ -350,6 +351,47 @@ would just be re-testing the library.
 `.github/workflows/ci.yml` runs on every push/PR: a `backend` job (real Postgres + Qdrant service
 containers, `ruff check`, `mypy`, `pytest`) and a `frontend` job (`eslint`, `tsc --noEmit`,
 `vitest run`, `next build`) — the same commands you'd run locally, not a separate CI-only path.
+
+### Golden-set answer-quality eval
+
+`pytest` (and CI) verify the app doesn't *crash* or regress its control flow; they don't verify
+answers are actually good, since that needs a real Groq call against the real ingested corpus,
+which is expensive and non-deterministic to run on every push. `app/evaluation/golden_set.py` is
+a separate, small suite of real questions for that gap — 19 cases across every student type plus
+edge cases (greeting, an ambiguous question with no profile set, an off-topic question), each
+checking *properties* of the answer (grounded, cited, no hedging) rather than exact wording, so
+it tolerates Groq's normal phrasing variance while still catching the failure modes that have
+actually happened in this project: a student-type filter scoped so narrowly it silently returns
+nothing, a "gateway" source so thin the model can only point back at the website, or a topic
+classifier confidence miss that asks an unnecessary clarifying question instead of answering.
+
+```bash
+cd backend && uv run python -m scripts.eval_answers   # requires GROQ_API_KEY + the real corpus
+```
+
+Run it manually against a running backend (not part of `pytest`/CI, and not gated on a key --
+it needs one to be useful at all). Exits non-zero if any case fails, so it can gate a release
+manually. `tests/evaluation/test_golden_set.py` is a small structural check on the golden set
+itself (unique names, every case asserts *something*, every `StudentType` covered) that *does*
+run in the regular suite, since that part needs no network call.
+
+**What it caught on first use**: two real regressions in one run.
+- `international_opt` ("What is OPT and how does it work?") got an unnecessary clarifying
+  question instead of an answer. Root cause: `TopicClassifier`'s OPT description scored bare
+  acronym questions ("What is OPT?") at 0.50 confidence, just under the 0.55 clarification
+  threshold — traced by embedding a few phrasings directly and comparing cosine scores. Fixed by
+  adding "what is OPT" to the topic description text (`app/retrieval/topic_classifier.py`),
+  verified not to regress the admissions/OPT collision the description was already tuned to avoid
+  in an earlier pass.
+- Two cases failed only because they didn't set a `student_type`, hitting the deliberate
+  first-turn "what kind of student are you" profile gate (`check_student_profile_node`) — a golden
+  set authoring bug, not an app bug, fixed by giving those cases a `student_type` since the
+  content itself isn't type-scoped.
+- Two more cases asked for facts the real source pages genuinely don't contain (a specific
+  freshman GPA minimum, and student parking permit pricing) — correctly came back
+  `grounded: false`. Also golden-set authoring bugs (asking for the wrong fact), not app bugs;
+  reworded to ask what the sources actually state. The parking permit price gap is real and
+  undocumented elsewhere — noted in the case's comment as a known, not-yet-fixed content gap.
 
 ## Performance
 
