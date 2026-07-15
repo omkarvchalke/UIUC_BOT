@@ -1,3 +1,7 @@
+import uuid
+
+from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -7,6 +11,17 @@ from app.graph.dependencies import GraphDependencies
 from app.graph.state import GraphState
 
 type _StateBuilder = StateGraph[GraphState, None, GraphState, GraphState]
+
+
+def turn_input(session_id: uuid.UUID, message: str) -> GraphState:
+    """The `input` argument for graph.ainvoke() for one turn of conversation."""
+    return {"session_id": str(session_id), "messages": [HumanMessage(content=message)]}
+
+
+def config_for(session_id: uuid.UUID) -> RunnableConfig:
+    """The `config` argument for graph.ainvoke() -- thread_id is the session
+    ID, so the checkpointer's conversation memory is scoped per session."""
+    return {"configurable": {"thread_id": str(session_id)}}
 
 
 def _add_node(builder: _StateBuilder, name: str, node: nodes.Node) -> None:

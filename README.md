@@ -5,13 +5,14 @@ and international students at the University of Illinois Urbana-Champaign (UIUC)
 grounded exclusively in official, publicly available UIUC resources via Retrieval-Augmented
 Generation, and the app never asks for personally identifiable information.
 
-> **Status:** Phases 1-5 complete (architecture/Docker, backend database layer, document
-> ingestion, embeddings + Qdrant + hybrid retrieval, LangGraph orchestration). The conversation
-> graph routes each message through profile checks, intent detection, embedding-based topic
-> classification, hybrid retrieval, cross-encoder reranking, and citation generation, with
-> conditional-edge clarification and Postgres-backed multi-turn memory. Generation uses a
-> deterministic placeholder for now — Groq integration and prompt engineering (Phase 6) come
-> next, then the chat UI (Phase 7).
+> **Status:** Phases 1-6 complete (architecture/Docker, backend database layer, document
+> ingestion, embeddings + Qdrant + hybrid retrieval, LangGraph orchestration, Groq generation).
+> `POST /api/v1/chat` runs the full graph — profile checks, intent detection, topic
+> classification, hybrid retrieval, cross-encoder reranking, real Groq-generated answers with
+> self-reported groundedness, and citations built only from sections the model actually cited.
+> **Not yet verified against a real Groq API key** — falls back to the deterministic Phase 5
+> generator until `GROQ_API_KEY` is set (see Groq Integration below). The chat UI is next
+> (Phase 7).
 
 ## Tech Stack
 
@@ -20,7 +21,7 @@ Generation, and the app never asks for personally identifiable information.
 | Frontend          | Next.js (App Router), TypeScript, TailwindCSS, shadcn/ui |
 | Backend           | Python, FastAPI                                     |
 | Orchestration     | LangGraph, LangChain-core                           |
-| LLM               | Groq (Phase 6+)                                     |
+| LLM               | Groq (`llama-3.3-70b-versatile`, JSON mode)         |
 | Embeddings        | Local sentence-transformers (BAAI/bge-small-en-v1.5), CPU-only |
 | Vector database   | Qdrant                                              |
 | Relational database | PostgreSQL                                        |
@@ -44,8 +45,9 @@ Generation, and the app never asks for personally identifiable information.
 │   │   ├── retrieval/          # BM25, hybrid (RRF) search, cross-encoder reranker, topic classifier
 │   │   ├── embeddings/         # Local embedding generation (sentence-transformers)
 │   │   ├── database/            # DB session/engine setup
+│   │   ├── llm/                   # Groq client, prompt builder, GroqAnswerGenerator
 │   │   ├── ingestion/             # HTML/PDF loaders, cleaning, chunking, source manifest
-│   │   ├── prompts/              # Prompt templates
+│   │   ├── prompts/              # Prompt templates (rag_system_prompt.txt)
 │   │   └── utils/                 # Shared helpers
 │   ├── migrations/            # Alembic migrations (async env.py)
 │   ├── scripts/                # run_ingestion.py / run_indexing.py CLI entrypoints
@@ -154,26 +156,68 @@ reranking, and citation generation. State (`app/graph/state.py::GraphState`) is 
 `AsyncPostgresSaver` checkpointer (`app/graph/checkpointer.py`), keyed by `thread_id` (the
 session ID) — not an in-memory `MemorySaver`, so it survives process restarts.
 
-Generation (`app/graph/generation.py::AnswerGenerator`) is a Protocol; Phase 5 ships a
-deterministic, non-LLM `ExtractiveAnswerGenerator` behind it so the graph's control flow could
-be verified without a Groq API key. Phase 6 swaps in a real LLM-backed implementation behind the
-same interface — no other node changes.
-
-Try it directly:
+Generation (`app/graph/generation.py::AnswerGenerator`) is a Protocol; the graph doesn't care
+which implementation sits behind it. Try the graph directly:
 
 ```python
-from app.graph.graph import build_graph
+from app.graph.graph import build_graph, turn_input, config_for
 from app.graph.checkpointer import build_checkpointer
 # ... construct GraphDependencies (see tests/test_graph.py for a full example)
 async with build_checkpointer() as checkpointer:
     graph = build_graph(deps, checkpointer=checkpointer)
-    result = await graph.ainvoke(
-        {"session_id": str(session_id), "messages": [HumanMessage(content="...")]},
-        config={"configurable": {"thread_id": str(session_id)}},
-    )
+    result = await graph.ainvoke(turn_input(session_id, "..."), config=config_for(session_id))
 ```
 
-No `/chat` HTTP endpoint yet — that's Phase 6, once there's a real LLM behind it worth exposing.
+Or via HTTP once a session exists (`POST /api/v1/sessions`):
+
+```bash
+curl -X POST localhost:8000/api/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id": "<uuid>", "message": "How do I apply for OPT?"}'
+```
+
+## Groq Integration and Prompt Engineering
+
+`app/api/dependencies.py::get_answer_generator()` picks the real `GroqAnswerGenerator`
+(`app/llm/groq_answer_generator.py`) when `GROQ_API_KEY` is set, and falls back to Phase 5's
+`ExtractiveAnswerGenerator` when it isn't — local dev and most tests work without a key; only
+`POST /api/v1/chat` giving a real generated answer needs one.
+
+- **Prompt** (`app/prompts/rag_system_prompt.txt`): instructs the model to answer only from the
+  numbered context sections, cite inline with `[n]`, never ask for PII, and respond in a strict
+  JSON envelope (`answer`, `grounded`, `citations_used`).
+- **Groundedness self-report**: the model reports whether its own answer is actually supported
+  by the cited context — the same pattern used in an earlier version of this project to catch a
+  real "high confidence but the model doesn't actually know" failure mode. A parse failure (the
+  model didn't return valid JSON) is treated as ungrounded rather than trusted.
+- **Citation filtering**: `citation_generator` only cites the context sections the model's
+  `citations_used` actually references (falls back to "cite everything it was given" only for
+  generators, like the Phase 5 placeholder, that can't report which sections they used) — this
+  is what "no hallucinated citations" means in practice here.
+- **Not yet verified against a real Groq call** — set `GROQ_API_KEY` in `backend/.env` (never in
+  `.env.example`) to enable it; 4 tests (`tests/llm/test_groq_client.py`,
+  `tests/llm/test_groq_answer_generator_live.py`) are gated on a real key and skip otherwise.
+  End-to-end smoke testing so far used the Phase 5 `ExtractiveAnswerGenerator` fallback, which
+  always reports `grounded: true` whenever any chunk was retrieved (it can't judge relevance,
+  only extract the top-ranked chunk verbatim) — occasionally citing content that doesn't
+  actually answer the question. This is exactly the failure mode the real groundedness
+  self-report exists to catch; expect noticeably better accuracy once a real key is set.
+
+### A real retrieval bug this caught
+
+Manual end-to-end testing surfaced a genuine bug, not just a Phase 5 quality gap: the
+embedding-based `TopicClassifier` confidently (0.65) misclassified "How do I apply for OPT?" as
+`admissions`, purely from "apply"/"application" overlapping with the admissions topic
+description — and `retrieve` was passing that classification to Qdrant as a **hard filter**, so
+a wrong classification returned zero results even though hybrid search with no topic filter
+correctly ranked the real OPT page #1. Fixed by no longer using topic as a retrieval filter at
+all (`student_type` still is, since it comes from the verified session profile, not a noisy
+classifier guess) — topic classification now only drives the clarification decision, where a
+wrong guess just means an occasional unnecessary clarifying question instead of a silent wrong
+answer. Also tightened the admissions topic description to reduce future collisions, and added
+`tests/test_graph.py::test_retrieval_is_not_broken_by_wrong_topic_classification` as a
+regression test using a stub classifier that's always wrong, so retrieval correctness doesn't
+depend on the embedding model's classification behavior staying the same.
 
 ## Testing
 

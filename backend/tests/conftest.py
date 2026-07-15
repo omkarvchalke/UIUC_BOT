@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from app.api.dependencies import get_vector_repository
+from app.api.dependencies import get_checkpointer, get_vector_repository
 from app.core.config import get_settings
 from app.database.session import get_db_session
 from app.graph.checkpointer import build_checkpointer
@@ -99,3 +99,16 @@ async def test_checkpointer() -> AsyncGenerator[AsyncPostgresSaver]:
     # connection open across a fixture boundary wider than one test.
     async with build_checkpointer(database_url=get_settings().test_database_url) as checkpointer:
         yield checkpointer
+
+
+@pytest_asyncio.fixture
+async def override_checkpointer(test_checkpointer: AsyncPostgresSaver) -> AsyncGenerator[None]:
+    # Not autouse -- only tests that hit the chat API need this. The real
+    # checkpointer lives on app.state, set up during the FastAPI lifespan,
+    # which the AsyncClient(transport=ASGITransport(...)) pattern used
+    # throughout these tests never triggers, so override the dependency
+    # directly instead (same as get_vector_repository above). Every other
+    # test would otherwise pay for a real Postgres connection it never uses.
+    app.dependency_overrides[get_checkpointer] = lambda: test_checkpointer
+    yield
+    app.dependency_overrides.pop(get_checkpointer, None)

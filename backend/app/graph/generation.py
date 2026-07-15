@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from langchain_core.messages import BaseMessage
+
 from app.graph.state import RetrievedChunkState
+from app.models.conversation_session import StudentType
 
 _GREETING_ANSWER = (
     "Hello! I'm IlliniGuide AI, an assistant for UIUC admissions, housing, registration, "
@@ -18,31 +21,54 @@ _NO_RESULTS_ANSWER = (
 class GeneratedAnswer:
     text: str
     grounded: bool
+    # 1-based indices into the context sections actually cited, matching
+    # context_builder's [n] numbering. None means "no citation filtering
+    # information available" -- the citation_generator node falls back to
+    # citing every chunk it was given, which is what ExtractiveAnswerGenerator
+    # (which always uses exactly one chunk anyway) relies on.
+    citation_indices: list[int] | None = None
 
 
 class AnswerGenerator(Protocol):
     """The generate_response node depends on this, not a concrete LLM client,
-    so Phase 6 (Groq Integration, Prompt Engineering) can swap in a real LLM
-    call behind the same interface without touching graph structure or any
-    other node."""
+    so Phase 6 can plug in real Groq generation behind the same interface
+    without touching graph structure or any other node. Async because a real
+    implementation makes a network call; ExtractiveAnswerGenerator just
+    doesn't await anything inside its own async def.
+    """
 
-    def generate(self, query: str, chunks: list[RetrievedChunkState]) -> GeneratedAnswer: ...
+    async def generate(
+        self,
+        query: str,
+        chunks: list[RetrievedChunkState],
+        *,
+        context: str,
+        history: list[BaseMessage],
+        student_type: StudentType | None,
+    ) -> GeneratedAnswer: ...
 
 
 class ExtractiveAnswerGenerator:
-    """Phase 5 placeholder: deterministic, no LLM call, no API key required.
+    """Phase 5 placeholder, kept as a dependency-free fallback: deterministic,
+    no LLM call, no API key required.
 
     Returns the single highest-reranked chunk's content verbatim rather than
     synthesizing prose -- deliberately not trying to sound like a real
-    assistant reply. The point of this phase is proving the graph's control
-    flow (routing, retrieval, reranking, citations) is correct and that
-    generate_response is cleanly swappable; writing a fluent answer from
-    retrieved context is exactly the prompt-engineering problem Phase 6
-    owns, and a hand-rolled template here would just be worse work thrown
-    away next phase.
+    assistant reply. Useful for tests that want to exercise graph control
+    flow without a Groq API key, and as what GroqAnswerGenerator degrades to
+    is not needed here since the graph handles LLM failures itself (see
+    nodes.make_generate_response_node).
     """
 
-    def generate(self, query: str, chunks: list[RetrievedChunkState]) -> GeneratedAnswer:
+    async def generate(
+        self,
+        query: str,
+        chunks: list[RetrievedChunkState],
+        *,
+        context: str,
+        history: list[BaseMessage],
+        student_type: StudentType | None,
+    ) -> GeneratedAnswer:
         if not chunks:
             return GeneratedAnswer(text=_NO_RESULTS_ANSWER, grounded=False)
 
@@ -53,3 +79,7 @@ class ExtractiveAnswerGenerator:
 
 def greeting_answer() -> GeneratedAnswer:
     return GeneratedAnswer(text=_GREETING_ANSWER, grounded=True)
+
+
+def no_results_answer() -> GeneratedAnswer:
+    return GeneratedAnswer(text=_NO_RESULTS_ANSWER, grounded=False)

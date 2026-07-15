@@ -151,11 +151,13 @@ def make_clarification_node() -> Node:
 def make_metadata_filter_node() -> Node:
     async def metadata_filter(state: GraphState) -> dict[str, Any]:
         # A named stage per the spec's graph, even though today it's a
-        # pass-through: topic/student_type already sit in state exactly as
-        # the retrieve node needs them. Kept separate from retrieve so a
-        # future filter rule (e.g. "don't filter by student_type for
-        # universally-applicable topics") has an obvious home that isn't
-        # tangled into the retrieval call itself.
+        # pass-through: student_type already sits in state exactly as the
+        # retrieve node needs it. topic is deliberately *not* forwarded as a
+        # hard filter (see retrieve node) -- classification confidence isn't
+        # reliable enough to gate retrieval on without risking false
+        # negatives, so it's used only for the clarification decision. Kept
+        # as its own node so this decision, and any future filter rule, has
+        # an obvious home separate from the retrieval call itself.
         return {}
 
     return metadata_filter
@@ -165,10 +167,20 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
     async def retrieve(state: GraphState) -> dict[str, Any]:
         query = _latest_human_message(state)
         topic = state.get("topic")
+        # topic is deliberately NOT passed as a Qdrant filter here (see
+        # metadata_filter's docstring): the embedding-based classifier is
+        # noisy enough that a wrong call turns a hard filter into zero
+        # results even when hybrid search alone finds the right content
+        # perfectly. Concretely: "How do I apply for OPT?" classified as
+        # "admissions" (0.65 confidence, above threshold) because of
+        # "apply"/"application" overlap with the admissions topic
+        # description, and filtering retrieval to topic=admissions returned
+        # nothing -- while the same query with no topic filter ranked the
+        # real OPT page #1-2. student_type stays a hard filter because it
+        # comes from the verified session profile, not a classifier guess.
         results = await deps.hybrid_retriever.search(
             query,
             limit=20,
-            topic=topic,
             student_type=state.get("student_type"),
         )
         logger.info(
@@ -212,11 +224,20 @@ def make_generate_response_node(deps: GraphDependencies) -> Node:
             result = greeting_answer()
         else:
             query = _latest_human_message(state)
-            result = deps.answer_generator.generate(query, state.get("reranked_chunks", []))
+            # messages[:-1]: exclude the current turn's just-appended human
+            # message from "history" -- it's already passed as `query`.
+            result = await deps.answer_generator.generate(
+                query,
+                state.get("reranked_chunks", []),
+                context=state.get("context", ""),
+                history=state["messages"][:-1],
+                student_type=state.get("student_type"),
+            )
 
         return {
             "answer": result.text,
             "grounded": result.grounded,
+            "citation_indices": result.citation_indices,
             "messages": [AIMessage(content=result.text)],
         }
 
@@ -228,9 +249,15 @@ def make_citation_generator_node() -> Node:
         if state.get("intent") == "greeting":
             return {"citations": []}
 
+        chunks = state.get("reranked_chunks", [])
+        indices = state.get("citation_indices")
+        if indices is not None:
+            # 1-based indices matching context_builder's [n] numbering.
+            chunks = [chunks[i - 1] for i in indices if 0 < i <= len(chunks)]
+
         seen_urls: set[str] = set()
         citations: list[CitationState] = []
-        for chunk in state.get("reranked_chunks", []):
+        for chunk in chunks:
             if chunk["url"] in seen_urls:
                 continue
             seen_urls.add(chunk["url"])

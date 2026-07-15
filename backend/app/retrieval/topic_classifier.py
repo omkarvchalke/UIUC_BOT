@@ -7,12 +7,24 @@ from app.models.document import Topic
 
 # Short natural-language description of each topic, embedded once and
 # compared against the user's message via cosine similarity. Chosen over
-# keyword matching (brittle, misses paraphrases) and over an LLM call
-# (Phase 6's job -- Phase 5 has no LLM integration yet) as a middle ground
-# that's deterministic, CPU-only, and reuses the embedding infrastructure
-# already built in Phase 4 rather than adding a new technique.
+# keyword matching (brittle, misses paraphrases) and over an extra LLM call
+# per message (an added network round-trip and cost for every turn) as a
+# middle ground that's deterministic, CPU-only, and reuses the embedding
+# infrastructure already built in Phase 4.
+#
+# Used only to decide whether to ask a clarifying question -- NOT as a
+# retrieval filter (see nodes.make_retrieve_node): "How do I apply for OPT?"
+# classified as "admissions" at 0.65 confidence (above the clarification
+# threshold) purely from "apply"/"application" overlapping with the
+# admissions description below, while hybrid search with no topic filter
+# ranked the real OPT page #1. A wrong classification here just means an
+# occasional unnecessary clarifying question; as a hard filter it would
+# have silently returned zero results instead.
 _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
-    Topic.ADMISSIONS: "applying for admission, application requirements and deadlines",
+    Topic.ADMISSIONS: (
+        "becoming a new UIUC student: freshman or transfer admission requirements, "
+        "essays, deadlines for prospective and incoming students"
+    ),
     Topic.REGISTRATION: "registering as a new or continuing student",
     Topic.ORIENTATION: "new student orientation, welcome week, orientation programs",
     Topic.HOUSING: "on-campus housing, residence halls, dorms, where students live",

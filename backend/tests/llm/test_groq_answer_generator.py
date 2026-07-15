@@ -1,0 +1,47 @@
+from app.llm.groq_answer_generator import GroqAnswerGenerator
+
+
+def test_parse_valid_json_response() -> None:
+    raw = '{"answer": "Freshmen must live on campus [1].", "grounded": true, "citations_used": [1]}'
+    result = GroqAnswerGenerator._parse(raw)
+    assert result.text == "Freshmen must live on campus [1]."
+    assert result.grounded is True
+    assert result.citation_indices == [1]
+
+
+def test_parse_response_with_no_citations() -> None:
+    raw = '{"answer": "I could not find that.", "grounded": false, "citations_used": []}'
+    result = GroqAnswerGenerator._parse(raw)
+    assert result.grounded is False
+    assert result.citation_indices == []
+
+
+def test_parse_missing_optional_fields_defaults_safely() -> None:
+    raw = '{"answer": "Some answer."}'
+    result = GroqAnswerGenerator._parse(raw)
+    assert result.text == "Some answer."
+    assert result.grounded is False
+    assert result.citation_indices == []
+
+
+def test_parse_malformed_json_falls_back_to_raw_text_ungrounded() -> None:
+    raw = "This is not JSON at all."
+    result = GroqAnswerGenerator._parse(raw)
+    assert result.text == raw
+    assert result.grounded is False
+    assert result.citation_indices is None
+
+
+def test_parse_json_missing_required_answer_key_falls_back() -> None:
+    raw = '{"grounded": true, "citations_used": [1]}'
+    result = GroqAnswerGenerator._parse(raw)
+    assert result.text == raw
+    assert result.grounded is False
+
+
+async def test_generate_with_no_chunks_returns_no_results_without_calling_groq() -> None:
+    generator = GroqAnswerGenerator()
+    result = await generator.generate(
+        "anything", [], context="", history=[], student_type=None
+    )
+    assert result.grounded is False

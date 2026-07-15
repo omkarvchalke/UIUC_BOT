@@ -72,3 +72,8 @@ class GraphState(TypedDict):
     answer: NotRequired[str]
     citations: NotRequired[list[CitationState]]
     grounded: NotRequired[bool]
+    # 1-based indices into reranked_chunks the generator actually cited
+    # (matches context_builder's [n] numbering). None means "cite every
+    # reranked chunk" -- ExtractiveAnswerGenerator's behavior, since it has
+    # no way to report which chunks it "used".
+    citation_indices: NotRequired[list[int] | None]
