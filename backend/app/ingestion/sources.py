@@ -38,6 +38,28 @@ SOURCES: tuple[SourceConfig, ...] = (
         fallback_title="First-Year Application Dates",
         student_types=(StudentType.FRESHMAN,),
     ),
+    # The two sources above are both "gateway" pages -- mostly nav links,
+    # with the actual step-by-step process and requirements living on
+    # separate subpages. Retrieval was pulling nav-menu text as the top
+    # chunks for "how do I apply" questions, producing answers that only
+    # gestured at "follow the process on the website" instead of real
+    # steps. Confirmed via GET /api/v1/retrieve before adding these.
+    SourceConfig(
+        url="https://www.admissions.illinois.edu/Apply/Freshman/process",
+        department="Undergraduate Admissions",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="How to Apply: First-Year Process",
+        student_types=(StudentType.FRESHMAN,),
+    ),
+    SourceConfig(
+        url="https://www.admissions.illinois.edu/apply/freshman/requirements",
+        department="Undergraduate Admissions",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="First-Year Admission Requirements",
+        student_types=(StudentType.FRESHMAN,),
+    ),
     SourceConfig(
         url="https://housing.illinois.edu/living-communities/halls/undergraduate",
         department="University Housing",
@@ -195,6 +217,14 @@ SOURCES: tuple[SourceConfig, ...] = (
         student_types=(StudentType.TRANSFER,),
     ),
     SourceConfig(
+        url="https://www.admissions.illinois.edu/apply/transfer/process",
+        department="Undergraduate Admissions",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="How to Apply: Transfer Process",
+        student_types=(StudentType.TRANSFER,),
+    ),
+    SourceConfig(
         url="https://www.admissions.illinois.edu/apply/international",
         department="Undergraduate Admissions",
         topic=Topic.ADMISSIONS,
@@ -216,6 +246,14 @@ SOURCES: tuple[SourceConfig, ...] = (
         topic=Topic.ADMISSIONS,
         source_type=SourceType.HTML,
         fallback_title="Graduate Admission Requirements & Deadlines FAQ",
+        student_types=(StudentType.GRADUATE,),
+    ),
+    SourceConfig(
+        url="https://grad.illinois.edu/admissions/application-instructions/completing-your-graduate-application",
+        department="The Graduate College",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="Completing Your Graduate Application",
         student_types=(StudentType.GRADUATE,),
     ),
     SourceConfig(

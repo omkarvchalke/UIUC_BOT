@@ -17,10 +17,12 @@ Generation, and the app never asks for personally identifiable information.
 > support (see Groq Integration below). Backend tests run with coverage (~93%), the frontend has a
 > real Vitest/RTL suite, CI runs both on every push, and there's a production Docker Compose
 > overlay with per-request rate limiting, resource limits, and log rotation (see Testing and
-> Deployment below). Content corpus expanded from 19 to 29 sources after a content-quality pass
-> found and fixed a real gap — transfer/graduate/international students got zero admissions
-> results because the only admissions sources were freshman-scoped — and added coverage for three
-> previously-sourceless topics (see Content coverage below).
+> Deployment below). Content corpus expanded from 19 to 33 sources after two content-quality
+> passes — one found and fixed a real gap where transfer/graduate/international students got zero
+> admissions results because the only admissions sources were freshman-scoped, plus coverage for
+> three previously-sourceless topics; the other replaced "gateway" admissions pages (mostly nav
+> links) with the actual step-by-step process pages after live answers came back vague instead of
+> wrong (see Content coverage below).
 
 ## Tech Stack
 
@@ -148,8 +150,8 @@ manifest — no other code changes needed.
 
 ### Content coverage
 
-29 sources across 20 topics (up from an initial 19). Two categories of gap surfaced during a
-content-quality pass and are now covered by `tests/ingestion/test_sources.py`:
+33 sources across 20 topics (up from an initial 19). Several categories of gap surfaced during
+content-quality passes; two are now covered by `tests/ingestion/test_sources.py`:
 
 - **A real retrieval bug, not just missing content**: `student_type` is a hard filter in
   `VectorRepository._build_filter` (`app/repositories/vector_repository.py`) — a document scoped
@@ -164,6 +166,20 @@ content-quality pass and are now covered by `tests/ingestion/test_sources.py`:
   `INTERNATIONAL_STUDENT_SERVICES` had zero sources at all — retrieval for those topics would
   always come back empty no matter how good the retriever is, and nothing about the retrieval
   code itself would ever flag it. `test_every_topic_has_at_least_one_source` guards this.
+- **"Gateway" pages producing vague answers**: the admissions site structures each application
+  type as a landing page that's mostly navigation links (`/apply/freshman`, `/apply/transfer`,
+  `grad.illinois.edu/admissions/application-instructions`), with the actual step-by-step process
+  living on separate subpages the original manifest didn't include. Retrieval was surfacing
+  nav-menu text as the top-ranked chunks for "how do I apply" questions, so the model could only
+  answer with "follow the process on the website" instead of real steps — grounded, but
+  unhelpfully vague, not a hallucination. Confirmed by inspecting the actual chunks
+  `GET /api/v1/retrieve` returned. Fixed by adding the dedicated process/requirements subpages
+  (`.../Apply/Freshman/process`, `.../apply/freshman/requirements`, `.../apply/transfer/process`,
+  `.../application-instructions/completing-your-graduate-application`) — each verified via
+  WebFetch beforehand to contain real numbered steps, not another nav page, before being added to
+  the manifest. There's no automated regression test for this category (thin vs. substantive
+  content isn't a property `test_sources.py` can check without fetching every URL); it was found
+  by spot-checking real answers.
 
 **A known, accepted limitation**: the library hours page (`library.illinois.edu/library-hours/`)
 renders its actual hours table client-side via JavaScript — the static HTML the ingestion
