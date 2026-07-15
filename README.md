@@ -11,10 +11,10 @@ Generation, and the app never asks for personally identifiable information.
 > topic classification, hybrid retrieval, cross-encoder reranking, real Groq-generated answers
 > with self-reported groundedness, and citations built only from sections the model actually
 > cited. The chat UI (onboarding, suggested questions, source panel, dark mode) is live and
-> browser-tested end-to-end against the real backend. **Not yet verified against a real Groq API
-> key** — falls back to the deterministic Phase 5 generator until `GROQ_API_KEY` is set (see
-> Groq Integration below); answer text is noticeably rougher until then (verbatim extracted
-> chunk text rather than synthesized prose). Testing (Phase 8) is next.
+> browser-tested end-to-end against the real backend. **Verified against a real Groq API key**
+> — synthesized prose with correct inline citations, and the groundedness self-report correctly
+> flags answers the retrieved context doesn't actually support (see Groq Integration below).
+> Testing (Phase 8) is next.
 
 ## Tech Stack
 
