@@ -1,0 +1,59 @@
+# Production overlay: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
+#
+# docker-compose.override.yml (which publishes Postgres/Qdrant ports to the
+# host for local dev) is only auto-loaded by plain `docker compose up` --
+# naming -f files explicitly like this excludes it, so in production the
+# data stores are reachable only from other containers on the Docker
+# network, never from the host.
+#
+# Also adds relative to the base file:
+# - Resource limits, so one runaway container (e.g. a retry loop hammering
+#   Groq) can't starve the whole host.
+# - Bounded JSON log file size -- the default docker log driver has no cap
+#   and will otherwise grow unbounded on a long-lived host.
+# - ENVIRONMENT=production and a real CORS origin instead of localhost.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+
+  qdrant:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+
+  backend:
+    environment:
+      ENVIRONMENT: production
+      CORS_ORIGINS: ${FRONTEND_PUBLIC_URL:?Set FRONTEND_PUBLIC_URL in .env for production}
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${BACKEND_PUBLIC_URL:?Set BACKEND_PUBLIC_URL in .env for production}
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g

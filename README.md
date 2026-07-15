@@ -5,16 +5,19 @@ and international students at the University of Illinois Urbana-Champaign (UIUC)
 grounded exclusively in official, publicly available UIUC resources via Retrieval-Augmented
 Generation, and the app never asks for personally identifiable information.
 
-> **Status:** Phases 1-7 complete (architecture/Docker, backend database layer, document
+> **Status:** Phases 1-8 complete (architecture/Docker, backend database layer, document
 > ingestion, embeddings + Qdrant + hybrid retrieval, LangGraph orchestration, Groq generation,
-> Next.js chat UI). `POST /api/v1/chat` runs the full graph — profile checks, intent detection,
-> topic classification, hybrid retrieval, cross-encoder reranking, real Groq-generated answers
-> with self-reported groundedness, and citations built only from sections the model actually
-> cited. The chat UI (onboarding, suggested questions, source panel, dark mode) is live and
-> browser-tested end-to-end against the real backend. **Verified against a real Groq API key**
-> — synthesized prose with correct inline citations, and the groundedness self-report correctly
-> flags answers the retrieved context doesn't actually support (see Groq Integration below).
-> Testing (Phase 8) is next.
+> Next.js chat UI, testing/performance/deployment). `POST /api/v1/chat` runs the full graph —
+> profile checks, intent detection, topic classification, hybrid retrieval, cross-encoder
+> reranking, real Groq-generated answers with self-reported groundedness, and citations built
+> only from sections the model actually cited. The chat UI (onboarding, suggested questions,
+> source panel, dark mode) is live and browser-tested end-to-end against the real backend.
+> **Verified against a real Groq API key** — synthesized prose with correct inline citations, and
+> the groundedness self-report correctly flags answers the retrieved context doesn't actually
+> support (see Groq Integration below). Backend tests run with coverage (92%), the frontend has a
+> real Vitest/RTL suite, CI runs both on every push, and there's a production Docker Compose
+> overlay with per-request rate limiting, resource limits, and log rotation (see Testing and
+> Deployment below).
 
 ## Tech Stack
 
@@ -29,7 +32,9 @@ Generation, and the app never asks for personally identifiable information.
 | Relational database | PostgreSQL                                        |
 | Package manager   | uv (backend), npm (frontend)                        |
 | Containerization  | Docker / docker-compose                             |
-| Testing           | pytest (backend), Vitest (frontend, Phase 8)        |
+| Testing           | pytest + pytest-cov (backend), Vitest + React Testing Library (frontend) |
+| CI                | GitHub Actions (`.github/workflows/ci.yml`)         |
+| Rate limiting     | slowapi (per-IP, `/chat` and `/retrieve`)           |
 
 ## Folder Structure
 
@@ -61,13 +66,18 @@ Generation, and the app never asks for personally identifiable information.
 │   ├── src/
 │   │   ├── app/              # Next.js App Router routes (page.tsx is the chat page)
 │   │   ├── components/        # UI components (shadcn/ui in components/ui, chat UI in components/chat)
-│   │   ├── hooks/               # useSession, useChat
+│   │   │                        (co-located *.test.tsx next to the components they cover)
+│   │   ├── hooks/               # useSession, useChat (co-located *.test.ts)
 │   │   ├── services/             # API client (chatApi.ts, api.ts)
 │   │   ├── types/                 # Shared TS types matching backend schemas
 │   │   └── styles/                 # Global/shared styles
+│   ├── vitest.config.ts
 │   └── Dockerfile
+├── .github/workflows/ci.yml   # Backend + frontend jobs: lint, typecheck, test, build
 ├── docs/
-└── docker-compose.yml
+├── docker-compose.yml          # Base: Postgres, Qdrant, backend, frontend
+├── docker-compose.override.yml # Auto-loaded for local dev: publishes DB/vector-store ports
+└── docker-compose.prod.yml     # Explicit -f overlay: resource limits, log rotation, no DB ports
 ```
 
 ## Local Development
@@ -256,7 +266,7 @@ against the real `POST /api/v1/chat` and `POST /api/v1/sessions` endpoints:
 ## Testing
 
 ```bash
-cd backend && uv run pytest
+cd backend && uv run pytest      # runs with coverage by default (see pyproject.toml addopts)
 ```
 
 Tests run against real PostgreSQL and Qdrant instances (no mocking the database or vector
@@ -271,7 +281,88 @@ DATABASE_URL="postgresql+asyncpg://illiniguide:change-me@localhost:5433/illinigu
 ```
 
 Qdrant tests run against a separate `illiniguide_documents_test` collection, created and torn
-down automatically per test.
+down automatically per test. `pytest-cov` is configured in `pyproject.toml`
+(`[tool.coverage.*]`) and reports branch coverage; current backend coverage is ~92%. The 4 tests
+gated on a real Groq call (`tests/llm/test_groq_client.py`,
+`tests/llm/test_groq_answer_generator_live.py`) skip themselves when `GROQ_API_KEY` isn't set,
+so the suite (and CI) stays green either way.
+
+```bash
+cd frontend && npm run test      # Vitest + React Testing Library, jsdom environment
+```
+
+Frontend tests cover the two stateful hooks (`useSession`, `useChat` — localStorage
+persistence, hydration timing, error handling) and the components with real conditional
+rendering logic (`StudentTypeSelector`, `MessageBubble`'s groundedness/clarification
+indicators, `ChatInput`'s validation) — not the purely presentational shadcn primitives, which
+would just be re-testing the library.
+
+### CI
+
+`.github/workflows/ci.yml` runs on every push/PR: a `backend` job (real Postgres + Qdrant service
+containers, `ruff check`, `mypy`, `pytest`) and a `frontend` job (`eslint`, `tsc --noEmit`,
+`vitest run`, `next build`) — the same commands you'd run locally, not a separate CI-only path.
+
+## Performance
+
+- **Rate limiting** (`app/core/rate_limit.py`, slowapi): `/chat` (20/min per IP, configurable via
+  `Settings.chat_rate_limit`) and `/retrieve` (30/min) are throttled — `/chat` calls a paid Groq
+  API per request and `/retrieve` runs embedding + cross-encoder inference, so an abusive or
+  looping client shouldn't be able to run either up unbounded. Covered by
+  `tests/test_chat_api.py::test_chat_enforces_rate_limit`, which overrides the limit to 2/min and
+  asserts the 3rd request comes back `429`.
+- **Model loading**: the embedding model and cross-encoder reranker are loaded once per process
+  (`@lru_cache`-wrapped singletons in `app/embeddings/embedder.py` and
+  `app/retrieval/reranker.py`), not per-request — both are CPU-only and loading them is the
+  expensive part.
+- **DB connection pooling**: `Settings.db_pool_size` (default 5) and `Settings.db_max_overflow`
+  (default 10) are now explicit, configurable settings passed to `create_async_engine`
+  (`app/database/session.py`), rather than relying on SQLAlchemy's implicit defaults — tunable
+  per deployment without a code change.
+
+## Deployment
+
+```bash
+cp .env.example .env   # fill in FRONTEND_PUBLIC_URL and BACKEND_PUBLIC_URL too
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+`docker-compose.prod.yml` is an explicit overlay (only applied when named with `-f`), so it does
+**not** stack with `docker-compose.override.yml` the way plain `docker compose up` does for local
+dev. Relative to the base file, it:
+
+- Doesn't publish Postgres/Qdrant ports to the host — plain `docker compose up` auto-loads
+  `docker-compose.override.yml`, which publishes them for local debugging (`psql`, the Qdrant
+  dashboard); production has no reason to expose the data stores beyond the Docker network the
+  backend already shares with them.
+- Sets CPU/memory limits per service (`deploy.resources.limits`), so one runaway container (e.g.
+  a client stuck retrying against `/chat`) can't starve the host.
+- Caps container log file size (`json-file`, 10MB × 3 files) — the default Docker log driver has
+  no cap and grows unbounded on a long-lived host.
+- Sets `ENVIRONMENT=production` and a real `CORS_ORIGINS` (from `FRONTEND_PUBLIC_URL`) instead of
+  `localhost`, and builds the frontend against `BACKEND_PUBLIC_URL` instead of a local address.
+
+This assumes a single host behind a reverse proxy (nginx, Caddy, Traefik) that terminates TLS
+and forwards to the `backend`/`frontend` containers' published ports — the proxy itself isn't
+included here since the right choice depends on the target host. Both Dockerfiles declare a
+`HEALTHCHECK` (backend: `GET /api/v1/health`; frontend: `GET /`), so `docker ps` and any
+orchestrator reading container health will reflect real service status rather than just "process
+is running." Postgres data lives in the named `postgres_data` volume (survives container
+recreation, e.g. after rebuilding for a code change) — back it up with `pg_dump` or a volume
+snapshot before any migration that isn't purely additive.
+
+### A real Docker networking bug this caught
+
+Adding the frontend `HEALTHCHECK` surfaced a real bug, not just a missing feature: Docker sets
+the `HOSTNAME` env var to the container ID automatically, and Next.js's standalone `server.js`
+binds to `process.env.HOSTNAME` when it's set — so the server was listening only on the
+container's internal Docker-network IP, never on `127.0.0.1` or `0.0.0.0`. It looked completely
+fine (`next start` logs "Ready", the published port forwarded traffic in from outside the
+container just fine because Docker's port mapping doesn't go through `localhost` inside the
+container), which is exactly why a healthcheck run *from inside the container* was needed to
+catch it — `curl localhost:3000` from inside that same container would already have failed.
+Fixed with `ENV HOSTNAME=0.0.0.0` in `frontend/Dockerfile`, forcing the standalone server to bind
+all interfaces.
 
 ## Environment Variables
 

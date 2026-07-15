@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: illiniguide
+          POSTGRES_PASSWORD: change-me
+          POSTGRES_DB: illiniguide
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U illiniguide"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://illiniguide:change-me@localhost:5432/illiniguide
+      QDRANT_URL: http://localhost:6333
+      # Deliberately unset: the 4 live-Groq tests in tests/llm/ skip
+      # themselves without a real key rather than failing, so CI stays
+      # green without needing a secret provisioned.
+      GROQ_API_KEY: ""
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -U illiniguide; do sleep 1; done
+
+      - name: Create test database
+        run: |
+          PGPASSWORD=change-me psql -h localhost -U illiniguide -d illiniguide \
+            -c "CREATE DATABASE illiniguide_test OWNER illiniguide;"
+
+      - name: Run migrations on test database
+        run: |
+          uv run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://illiniguide:change-me@localhost:5432/illiniguide_test
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Type check (mypy)
+        run: uv run mypy app
+
+      - name: Test (pytest, with coverage)
+        run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:8000

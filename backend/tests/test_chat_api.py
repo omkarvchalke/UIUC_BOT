@@ -1,8 +1,11 @@
 import uuid
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import app.api.chat as chat_module
+from app.core.config import Settings
 from app.main import app
 from app.models.conversation_session import StudentType
 from app.models.document import SourceType, Topic
@@ -128,3 +131,19 @@ async def test_chat_rejects_invalid_session_id(override_checkpointer: None) -> N
         )
 
     assert response.status_code == 422
+
+
+async def test_chat_enforces_rate_limit(
+    monkeypatch: pytest.MonkeyPatch, override_checkpointer: None
+) -> None:
+    # Chat calls a paid Groq API per request, so a client that loops or
+    # retries aggressively should get throttled rather than run up cost --
+    # this proves the limiter is actually wired up, not just configured.
+    tight_settings = Settings(chat_rate_limit="2/minute")
+    monkeypatch.setattr(chat_module, "get_settings", lambda: tight_settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        payload = {"session_id": str(uuid.uuid4()), "message": "hello"}
+        responses = [await client.post("/api/v1/chat", json=payload) for _ in range(3)]
+
+    assert [r.status_code for r in responses] == [200, 200, 429]

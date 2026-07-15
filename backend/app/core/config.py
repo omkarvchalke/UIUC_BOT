@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     qdrant_collection_name: str = "illiniguide_documents"
 
     database_url: str = "postgresql+asyncpg://illiniguide:change-me@localhost:5432/illiniguide"
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+
+    # Chat calls a paid Groq API per request; retrieve runs embedding +
+    # cross-encoder inference. Both are rate-limited per client IP to bound
+    # cost and CPU load from a single abusive or looping client.
+    chat_rate_limit: str = "20/minute"
+    retrieve_rate_limit: str = "30/minute"
 
     @property
     def cors_origins_list(self) -> list[str]:
