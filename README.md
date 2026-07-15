@@ -14,10 +14,13 @@ Generation, and the app never asks for personally identifiable information.
 > source panel, dark mode) is live and browser-tested end-to-end against the real backend.
 > **Verified against a real Groq API key** — synthesized prose with correct inline citations, and
 > the groundedness self-report correctly flags answers the retrieved context doesn't actually
-> support (see Groq Integration below). Backend tests run with coverage (92%), the frontend has a
+> support (see Groq Integration below). Backend tests run with coverage (~93%), the frontend has a
 > real Vitest/RTL suite, CI runs both on every push, and there's a production Docker Compose
 > overlay with per-request rate limiting, resource limits, and log rotation (see Testing and
-> Deployment below).
+> Deployment below). Content corpus expanded from 19 to 29 sources after a content-quality pass
+> found and fixed a real gap — transfer/graduate/international students got zero admissions
+> results because the only admissions sources were freshman-scoped — and added coverage for three
+> previously-sourceless topics (see Content coverage below).
 
 ## Tech Stack
 
@@ -143,6 +146,34 @@ Re-running is cheap: each source's cleaned text is hashed, and unchanged sources
 `GET /api/v1/documents/{id}`. Add a new source by appending a `SourceConfig` entry to the
 manifest — no other code changes needed.
 
+### Content coverage
+
+29 sources across 20 topics (up from an initial 19). Two categories of gap surfaced during a
+content-quality pass and are now covered by `tests/ingestion/test_sources.py`:
+
+- **A real retrieval bug, not just missing content**: `student_type` is a hard filter in
+  `VectorRepository._build_filter` (`app/repositories/vector_repository.py`) — a document scoped
+  to one `StudentType` never surfaces for a different one, and only a document with
+  `student_types=()` (applies to everyone) is exempt. The two original admissions sources were
+  both `FRESHMAN`-only, so a transfer or graduate student asking *any* admissions question got
+  zero results — confirmed live via `GET /api/v1/retrieve?student_type=transfer`. Fixed by adding
+  transfer, graduate, and international-specific admissions sources.
+  `test_every_student_type_has_admissions_coverage` asserts every `StudentType` has at least one
+  applicable admissions source, so this can't silently regress as sources are added or reworded.
+- **Uncovered topics**: `REGISTRATION`, `COURSE_REGISTRATION`, and
+  `INTERNATIONAL_STUDENT_SERVICES` had zero sources at all — retrieval for those topics would
+  always come back empty no matter how good the retriever is, and nothing about the retrieval
+  code itself would ever flag it. `test_every_topic_has_at_least_one_source` guards this.
+
+**A known, accepted limitation**: the library hours page (`library.illinois.edu/library-hours/`)
+renders its actual hours table client-side via JavaScript — the static HTML the ingestion
+pipeline fetches contains only navigation links, never the hours themselves (confirmed by
+inspecting the scraped chunks directly, and by checking an alternate library page, which has the
+same issue). This isn't fixable by picking a different URL; it would need a JS-rendering fetch
+step, which is out of scope. The system already degrades correctly here rather than silently:
+the groundedness self-report (see Groq Integration below) reports `grounded: false` for hours
+questions instead of confidently inventing an answer.
+
 ## Embeddings, Qdrant, and Hybrid Retrieval
 
 Embeds every ingested chunk (local, CPU-only `BAAI/bge-small-en-v1.5` — no paid embedding API)
@@ -206,14 +237,15 @@ curl -X POST localhost:8000/api/v1/chat \
   `citations_used` actually references (falls back to "cite everything it was given" only for
   generators, like the Phase 5 placeholder, that can't report which sections they used) — this
   is what "no hallucinated citations" means in practice here.
-- **Not yet verified against a real Groq call** — set `GROQ_API_KEY` in `backend/.env` (never in
+- **Verified against a real Groq call**: set `GROQ_API_KEY` in `backend/.env` (never in
   `.env.example`) to enable it; 4 tests (`tests/llm/test_groq_client.py`,
-  `tests/llm/test_groq_answer_generator_live.py`) are gated on a real key and skip otherwise.
-  End-to-end smoke testing so far used the Phase 5 `ExtractiveAnswerGenerator` fallback, which
-  always reports `grounded: true` whenever any chunk was retrieved (it can't judge relevance,
-  only extract the top-ranked chunk verbatim) — occasionally citing content that doesn't
-  actually answer the question. This is exactly the failure mode the real groundedness
-  self-report exists to catch; expect noticeably better accuracy once a real key is set.
+  `tests/llm/test_groq_answer_generator_live.py`) are gated on a real key and skip themselves
+  otherwise. Live end-to-end testing confirmed real synthesized prose with correct `[1][2][3]`
+  inline citations (vs. the Phase 5 `ExtractiveAnswerGenerator` fallback's verbatim chunk text,
+  which always reports `grounded: true` whenever any chunk was retrieved since it can't judge
+  relevance) — and the groundedness self-report correctly caught a real case where the retrieved
+  chunk didn't actually answer the question (an OPT application question, where the top match
+  only mentioned OPT in passing), returning `grounded: false` instead of a confident wrong answer.
 
 ### A real retrieval bug this caught
 
@@ -282,7 +314,7 @@ DATABASE_URL="postgresql+asyncpg://illiniguide:change-me@localhost:5433/illinigu
 
 Qdrant tests run against a separate `illiniguide_documents_test` collection, created and torn
 down automatically per test. `pytest-cov` is configured in `pyproject.toml`
-(`[tool.coverage.*]`) and reports branch coverage; current backend coverage is ~92%. The 4 tests
+(`[tool.coverage.*]`) and reports branch coverage; current backend coverage is ~93%. The 4 tests
 gated on a real Groq call (`tests/llm/test_groq_client.py`,
 `tests/llm/test_groq_answer_generator_live.py`) skip themselves when `GROQ_API_KEY` isn't set,
 so the suite (and CI) stays green either way.

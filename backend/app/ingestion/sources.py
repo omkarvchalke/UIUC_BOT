@@ -163,4 +163,89 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Transportation",
     ),
+    SourceConfig(
+        url="https://parking.illinois.edu/permits",
+        department="Parking Department",
+        topic=Topic.TRANSPORTATION,
+        source_type=SourceType.HTML,
+        fallback_title="Parking Permits",
+    ),
+    # The two freshman admissions sources above only apply to
+    # StudentType.FRESHMAN -- since student_type is a hard retrieval filter
+    # (a document with no student_types applies to everyone, but one scoped
+    # to FRESHMAN only will never surface for a transfer/graduate/
+    # international query), transfer and graduate students asking an
+    # admissions question got zero admissions results. These sources close
+    # that gap. (Found via a live /api/v1/retrieve check with
+    # student_type=transfer returning no admissions-topic hits at all.)
+    SourceConfig(
+        url="https://www.admissions.illinois.edu/apply/transfer/dates",
+        department="Undergraduate Admissions",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="Transfer Admission Dates & Deadlines",
+        student_types=(StudentType.TRANSFER,),
+    ),
+    SourceConfig(
+        url="https://www.admissions.illinois.edu/apply/transfer/gpa-guidelines",
+        department="Undergraduate Admissions",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="Transfer GPA Guidelines",
+        student_types=(StudentType.TRANSFER,),
+    ),
+    SourceConfig(
+        url="https://www.admissions.illinois.edu/apply/international",
+        department="Undergraduate Admissions",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="International Undergraduate Admissions",
+        student_types=(StudentType.INTERNATIONAL,),
+    ),
+    SourceConfig(
+        url="https://grad.illinois.edu/admissions/graduate-admissions-minimum-requirements",
+        department="The Graduate College",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="Graduate Admissions Minimum Requirements",
+        student_types=(StudentType.GRADUATE,),
+    ),
+    SourceConfig(
+        url="https://grad.illinois.edu/admissions/application-faq/requirements-deadlines",
+        department="The Graduate College",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="Graduate Admission Requirements & Deadlines FAQ",
+        student_types=(StudentType.GRADUATE,),
+    ),
+    SourceConfig(
+        url="https://registrar.illinois.edu/registration/",
+        department="Office of the Registrar",
+        topic=Topic.REGISTRATION,
+        source_type=SourceType.HTML,
+        fallback_title="Registration",
+    ),
+    SourceConfig(
+        url="https://registrar.illinois.edu/registration/how-to-register/",
+        department="Office of the Registrar",
+        topic=Topic.COURSE_REGISTRATION,
+        source_type=SourceType.HTML,
+        fallback_title="How to Register for Classes",
+    ),
+    SourceConfig(
+        url="https://newstudent.illinois.edu/orientation/NSR",
+        department="New Student & Family Experiences",
+        topic=Topic.ORIENTATION,
+        source_type=SourceType.HTML,
+        fallback_title="New Student Registration",
+        student_types=(StudentType.FRESHMAN, StudentType.TRANSFER),
+    ),
+    SourceConfig(
+        url="https://isss.illinois.edu/",
+        department="International Student and Scholar Services",
+        topic=Topic.INTERNATIONAL_STUDENT_SERVICES,
+        source_type=SourceType.HTML,
+        fallback_title="International Student and Scholar Services",
+        student_types=(StudentType.INTERNATIONAL,),
+    ),
 )
