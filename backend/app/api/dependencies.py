@@ -13,12 +13,14 @@ from app.graph.graph import build_graph
 from app.graph.state import GraphState
 from app.llm.groq_answer_generator import GroqAnswerGenerator
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.feedback_repository import FeedbackRepository
 from app.repositories.session_repository import SessionRepository
 from app.repositories.vector_repository import VectorRepository
 from app.retrieval.hybrid_search import HybridRetriever
 from app.retrieval.reranker import CrossEncoderReranker
 from app.retrieval.topic_classifier import TopicClassifier
 from app.services.document_service import DocumentService
+from app.services.feedback_service import FeedbackService
 from app.services.session_service import SessionService
 
 DbSession = Annotated[AsyncSession, Depends(get_db_session)]
@@ -50,6 +52,22 @@ def get_document_service(repository: DocumentRepositoryDep) -> DocumentService:
 
 
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
+
+
+def get_feedback_repository(db: DbSession) -> FeedbackRepository:
+    return FeedbackRepository(db)
+
+
+FeedbackRepositoryDep = Annotated[FeedbackRepository, Depends(get_feedback_repository)]
+
+
+def get_feedback_service(
+    repository: FeedbackRepositoryDep, session_repository: SessionRepositoryDep
+) -> FeedbackService:
+    return FeedbackService(repository, session_repository)
+
+
+FeedbackServiceDep = Annotated[FeedbackService, Depends(get_feedback_service)]
 
 
 def get_vector_repository() -> VectorRepository:

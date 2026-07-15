@@ -300,6 +300,25 @@ answer. Also tightened the admissions topic description to reduce future collisi
 regression test using a stub classifier that's always wrong, so retrieval correctness doesn't
 depend on the embedding model's classification behavior staying the same.
 
+## Feedback
+
+`POST /api/v1/feedback` records a thumbs up/down (plus an optional comment, not yet surfaced in
+the UI) against a specific answer:
+
+```bash
+curl -X POST localhost:8000/api/v1/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id": "<uuid>", "message_id": "<client-generated id>", "question": "...", "answer": "...", "rating": "helpful"}'
+```
+
+Feedback rows (`app/models/feedback.py`) denormalize the question and answer text rather than
+referencing a persisted message id: conversation turns live in the LangGraph checkpointer
+(`app/graph/checkpointer.py`), not a separate queryable messages table, so there's no stable
+server-side message id to foreign-key against. `message_id` is the frontend's own
+client-generated id (`crypto.randomUUID()`), kept for correlation but never validated
+server-side. `session_id` *is* validated against `conversation_sessions` (404 on an unknown
+session) before the row is written.
+
 ## Frontend (Chat UI)
 
 A Next.js (App Router) single-page chat interface at `frontend/src/app/page.tsx`, built directly
@@ -326,6 +345,11 @@ against the real `POST /api/v1/chat` and `POST /api/v1/sessions` endpoints:
   question" label instead of being presented as a normal answer.
 - **Dark mode** via `next-themes` (`components/ThemeProvider.tsx`, `ThemeToggle.tsx`), system
   preference by default, manually toggleable, persisted.
+- **Feedback** (`components/chat/FeedbackButtons.tsx`): thumbs up/down under each assistant
+  answer, posting to `POST /api/v1/feedback`. Optimistic — the button state updates immediately
+  and persists to localStorage, reverting only if the request actually fails — since feedback is
+  a nice-to-have signal, not a critical path worth blocking the UI on. Not shown on clarification
+  messages (there's nothing to rate yet) or the user's own messages.
 - Browser-tested end-to-end with Playwright against both the dev server and the production
   Docker build (onboarding, suggested questions, a real chat round-trip, source panel, dark
   mode, mobile viewport, the clarification flow) — zero console errors across all of it. Answer

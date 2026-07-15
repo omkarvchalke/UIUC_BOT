@@ -112,4 +112,100 @@ describe("useChat", () => {
     expect(result.current.messages).toHaveLength(0);
     expect(localStorage.getItem("illiniguide.history.session-5")).toBeNull();
   });
+
+  it("stashes the user's question onto the resulting assistant message", async () => {
+    vi.spyOn(chatApi, "sendChatMessage").mockResolvedValue({
+      answer: "Here's the answer.",
+      grounded: true,
+      needs_clarification: false,
+      citations: [],
+    });
+
+    const { result } = renderHook(() => useChat("session-6"));
+    await act(async () => {
+      await result.current.sendMessage("How do I apply for OPT?");
+    });
+
+    expect(result.current.messages[1].question).toBe("How do I apply for OPT?");
+  });
+
+  it("submitFeedback marks the message and calls the API with the full payload", async () => {
+    vi.spyOn(chatApi, "sendChatMessage").mockResolvedValue({
+      answer: "Here's the answer.",
+      grounded: true,
+      needs_clarification: false,
+      citations: [],
+    });
+    const feedbackSpy = vi.spyOn(chatApi, "sendFeedback").mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useChat("session-7"));
+    await act(async () => {
+      await result.current.sendMessage("How do I apply for OPT?");
+    });
+    const assistantMessageId = result.current.messages[1].id;
+
+    await act(async () => {
+      await result.current.submitFeedback(assistantMessageId, "helpful");
+    });
+
+    expect(result.current.messages[1].feedback).toBe("helpful");
+    expect(feedbackSpy).toHaveBeenCalledWith({
+      session_id: "session-7",
+      message_id: assistantMessageId,
+      question: "How do I apply for OPT?",
+      answer: "Here's the answer.",
+      rating: "helpful",
+    });
+
+    const stored = JSON.parse(localStorage.getItem("illiniguide.history.session-7") ?? "[]");
+    expect(stored[1].feedback).toBe("helpful");
+  });
+
+  it("submitFeedback reverts the optimistic mark if the API call fails", async () => {
+    vi.spyOn(chatApi, "sendChatMessage").mockResolvedValue({
+      answer: "Here's the answer.",
+      grounded: true,
+      needs_clarification: false,
+      citations: [],
+    });
+    vi.spyOn(chatApi, "sendFeedback").mockRejectedValue(new Error("network error"));
+
+    const { result } = renderHook(() => useChat("session-8"));
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+    const assistantMessageId = result.current.messages[1].id;
+
+    await act(async () => {
+      await result.current.submitFeedback(assistantMessageId, "not_helpful");
+    });
+
+    expect(result.current.messages[1].feedback).toBeUndefined();
+  });
+
+  it("submitFeedback is a no-op for a message that was already rated", async () => {
+    vi.spyOn(chatApi, "sendChatMessage").mockResolvedValue({
+      answer: "Here's the answer.",
+      grounded: true,
+      needs_clarification: false,
+      citations: [],
+    });
+    const feedbackSpy = vi.spyOn(chatApi, "sendFeedback").mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useChat("session-9"));
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+    const assistantMessageId = result.current.messages[1].id;
+
+    await act(async () => {
+      await result.current.submitFeedback(assistantMessageId, "helpful");
+    });
+    await act(async () => {
+      await result.current.submitFeedback(assistantMessageId, "not_helpful");
+    });
+
+    expect(feedbackSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.messages[1].feedback).toBe("helpful");
+  });
 });

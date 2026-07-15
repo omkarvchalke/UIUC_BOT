@@ -21,7 +21,14 @@ export default function ChatPage() {
     startSession,
     resetSession,
   } = useSession();
-  const { messages, isSending, error: chatError, sendMessage, clearHistory } = useChat(sessionId);
+  const {
+    messages,
+    isSending,
+    error: chatError,
+    sendMessage,
+    clearHistory,
+    submitFeedback,
+  } = useChat(sessionId);
 
   function handleNewConversation() {
     clearHistory();
@@ -78,7 +85,11 @@ export default function ChatPage() {
                   <SuggestedQuestions onSelect={sendMessage} disabled={isSending} />
                 </div>
               ) : (
-                <ChatWindow messages={messages} isSending={isSending} />
+                <ChatWindow
+                  messages={messages}
+                  isSending={isSending}
+                  onRateFeedback={submitFeedback}
+                />
               )}
             </div>
             <div className="border-t px-4 py-4">

@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ChatMessage } from "@/types/chat";
 
@@ -63,5 +64,59 @@ describe("MessageBubble", () => {
     );
 
     expect(screen.getByRole("button", { name: /1 source/i })).toBeInTheDocument();
+  });
+
+  it("shows feedback buttons for a normal assistant answer when a handler is provided", () => {
+    render(<MessageBubble message={baseMessage()} onRateFeedback={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /was helpful/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /was not helpful/i })).toBeInTheDocument();
+  });
+
+  it("does not show feedback buttons without a handler", () => {
+    render(<MessageBubble message={baseMessage()} />);
+
+    expect(screen.queryByRole("button", { name: /helpful/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show feedback buttons on a clarification message", () => {
+    render(
+      <MessageBubble
+        message={baseMessage({ needsClarification: true })}
+        onRateFeedback={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /helpful/i })).not.toBeInTheDocument();
+  });
+
+  it("never shows feedback buttons for the user's own message", () => {
+    render(
+      <MessageBubble message={baseMessage({ role: "user" })} onRateFeedback={vi.fn()} />,
+    );
+
+    expect(screen.queryByRole("button", { name: /helpful/i })).not.toBeInTheDocument();
+  });
+
+  it("calls onRateFeedback with the message id and chosen rating", async () => {
+    const onRateFeedback = vi.fn();
+    const user = userEvent.setup();
+    render(<MessageBubble message={baseMessage({ id: "msg-42" })} onRateFeedback={onRateFeedback} />);
+
+    await user.click(screen.getByRole("button", { name: /this answer was helpful/i }));
+
+    expect(onRateFeedback).toHaveBeenCalledWith("msg-42", "helpful");
+  });
+
+  it("shows a thank-you message once feedback has been given", () => {
+    render(
+      <MessageBubble
+        message={baseMessage({ feedback: "helpful" })}
+        onRateFeedback={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/thanks for the feedback/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /this answer was helpful/i })).not.toBeInTheDocument();
   });
 });

@@ -21,6 +21,17 @@ export interface ChatApiResponse {
   citations: Citation[];
 }
 
+export type FeedbackRating = "helpful" | "not_helpful";
+
+export interface FeedbackRequest {
+  session_id: string;
+  message_id: string;
+  question: string;
+  answer: string;
+  rating: FeedbackRating;
+  comment?: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -29,4 +40,9 @@ export interface ChatMessage {
   grounded?: boolean;
   needsClarification?: boolean;
   createdAt: string;
+  // Only set on assistant messages -- the user question this answer was
+  // responding to, stashed at creation time in useChat so feedback
+  // submission doesn't need to look up the preceding message.
+  question?: string;
+  feedback?: FeedbackRating;
 }

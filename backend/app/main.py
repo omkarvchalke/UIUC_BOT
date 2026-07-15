@@ -9,6 +9,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.chat import router as chat_router
 from app.api.documents import router as documents_router
+from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
 from app.api.retrieve import router as retrieve_router
 from app.api.sessions import router as sessions_router
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(documents_router, prefix="/api/v1")
     app.include_router(retrieve_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
+    app.include_router(feedback_router, prefix="/api/v1")
 
     return app
 

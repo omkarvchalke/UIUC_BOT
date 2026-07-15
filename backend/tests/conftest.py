@@ -62,7 +62,10 @@ def db_session_factory(test_engine: AsyncEngine) -> async_sessionmaker[AsyncSess
 async def clean_tables(test_engine: AsyncEngine) -> AsyncGenerator[None]:
     yield
     async with test_engine.begin() as conn:
-        await conn.execute(text("TRUNCATE TABLE conversation_sessions"))
+        # feedback FKs to conversation_sessions -- truncating both together
+        # in one statement satisfies Postgres's FK check; truncating
+        # conversation_sessions alone would fail once anything references it.
+        await conn.execute(text("TRUNCATE TABLE feedback, conversation_sessions"))
         await conn.execute(text("TRUNCATE TABLE documents CASCADE"))
 
 

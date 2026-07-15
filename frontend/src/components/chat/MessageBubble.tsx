@@ -1,14 +1,16 @@
 import { AlertTriangle, HelpCircle } from "lucide-react";
 
+import { FeedbackButtons } from "@/components/chat/FeedbackButtons";
 import { SourcePanel } from "@/components/chat/SourcePanel";
 import { cn } from "@/lib/utils";
-import type { ChatMessage } from "@/types/chat";
+import type { ChatMessage, FeedbackRating } from "@/types/chat";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  onRateFeedback?: (messageId: string, rating: FeedbackRating) => void;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onRateFeedback }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -37,6 +39,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
         {!isUser && message.citations && message.citations.length > 0 && (
           <SourcePanel citations={message.citations} />
+        )}
+
+        {!isUser && !message.needsClarification && onRateFeedback && (
+          <FeedbackButtons
+            feedback={message.feedback}
+            onRate={(rating) => onRateFeedback(message.id, rating)}
+          />
         )}
       </div>
     </div>

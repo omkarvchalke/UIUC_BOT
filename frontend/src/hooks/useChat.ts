@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { sendChatMessage } from "@/services/chatApi";
-import type { ChatMessage } from "@/types/chat";
+import { sendChatMessage, sendFeedback } from "@/services/chatApi";
+import type { ChatMessage, FeedbackRating } from "@/types/chat";
 
 function historyKey(sessionId: string): string {
   return `illiniguide.history.${sessionId}`;
@@ -34,6 +34,7 @@ interface UseChatResult {
   error: string | null;
   sendMessage: (text: string) => Promise<void>;
   clearHistory: () => void;
+  submitFeedback: (messageId: string, rating: FeedbackRating) => Promise<void>;
 }
 
 export function useChat(sessionId: string | null): UseChatResult {
@@ -84,6 +85,7 @@ export function useChat(sessionId: string | null): UseChatResult {
           grounded: response.grounded,
           needsClarification: response.needs_clarification,
           createdAt: new Date().toISOString(),
+          question: trimmed,
         };
         setMessages((prev) => {
           const next = [...prev, assistantMessage];
@@ -106,5 +108,44 @@ export function useChat(sessionId: string | null): UseChatResult {
     setMessages([]);
   }, [sessionId]);
 
-  return { messages, isSending, error, sendMessage, clearHistory };
+  const submitFeedback = useCallback(
+    async (messageId: string, rating: FeedbackRating) => {
+      if (!sessionId) return;
+      const message = messages.find((m) => m.id === messageId);
+      if (!message || message.role !== "assistant" || message.feedback) return;
+
+      // Optimistic: mark as rated immediately so the buttons update without
+      // waiting on the network, matching the rest of this hook's pattern of
+      // updating local state (and persisting it) right away.
+      setMessages((prev) => {
+        const next = prev.map((m) => (m.id === messageId ? { ...m, feedback: rating } : m));
+        saveHistory(sessionId, next);
+        return next;
+      });
+
+      try {
+        await sendFeedback({
+          session_id: sessionId,
+          message_id: messageId,
+          question: message.question ?? "",
+          answer: message.content,
+          rating,
+        });
+      } catch {
+        // Feedback is a nice-to-have signal, not a critical path -- revert
+        // the optimistic mark on failure so the student can retry, but
+        // don't surface a disruptive error for a background action.
+        setMessages((prev) => {
+          const next = prev.map((m) =>
+            m.id === messageId ? { ...m, feedback: undefined } : m,
+          );
+          saveHistory(sessionId, next);
+          return next;
+        });
+      }
+    },
+    [sessionId, messages],
+  );
+
+  return { messages, isSending, error, sendMessage, clearHistory, submitFeedback };
 }

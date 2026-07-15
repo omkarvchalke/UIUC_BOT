@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.database.base import Base
 from app.models.conversation_session import ConversationSession  # noqa: F401
 from app.models.document import Document, DocumentChunk  # noqa: F401
+from app.models.feedback import Feedback  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

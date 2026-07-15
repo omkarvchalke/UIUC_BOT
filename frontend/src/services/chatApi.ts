@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from "@/services/api";
-import type { ChatApiResponse } from "@/types/chat";
+import type { ChatApiResponse, FeedbackRequest } from "@/types/chat";
 import type { SessionCreateRequest, SessionResponse } from "@/types/session";
 
 export class ApiError extends Error {
@@ -41,4 +41,16 @@ export async function sendChatMessage(
   }
 
   return response.json();
+}
+
+export async function sendFeedback(payload: FeedbackRequest): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new ApiError("Could not submit feedback.", response.status);
+  }
 }
