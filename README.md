@@ -31,7 +31,7 @@ Generation, and the app never asks for personally identifiable information.
 | Frontend          | Next.js (App Router), TypeScript, TailwindCSS, shadcn/ui |
 | Backend           | Python, FastAPI                                     |
 | Orchestration     | LangGraph, LangChain-core                           |
-| LLM               | Groq (`llama-3.3-70b-versatile`, JSON mode)         |
+| LLM               | Groq (`llama-4-scout-17b-16e-instruct`, JSON mode)  |
 | Embeddings        | Local sentence-transformers (BAAI/bge-small-en-v1.5), CPU-only |
 | Vector database   | Qdrant                                              |
 | Relational database | PostgreSQL                                        |
@@ -244,6 +244,19 @@ curl -X POST localhost:8000/api/v1/chat \
 `ExtractiveAnswerGenerator` when it isn't — local dev and most tests work without a key; only
 `POST /api/v1/chat` giving a real generated answer needs one.
 
+- **Model choice** (`Settings.groq_model`, `backend/.env` `GROQ_MODEL`): `llama-4-scout-17b-16e-instruct`,
+  not the more obvious `llama-3.3-70b-versatile` or `llama-3.1-8b-instant`. Picked by comparing
+  real per-minute rate-limit headers across candidates on this account, not published numbers --
+  what actually matters for RAG is *tokens*-per-minute, since our prompts carry several retrieved
+  chunks of context. `llama-3.1-8b-instant` looked like the obvious "more quota" choice from its
+  14,400 req/min limit, but its 6,000 TPM is actually *lower* than `llama-3.3-70b-versatile`'s
+  12,000, and it hit real `429`s plus 18-21s SDK retry backoffs running the golden-set eval
+  (`app/evaluation/`) against it. Llama 4 Scout's 30,000 TPM (2.5x `llama-3.3-70b-versatile`) has
+  real headroom for context-heavy prompts, and was verified against our actual JSON-mode RAG
+  prompt (a fully-supported case, a genuinely unanswerable one, and an edge case) to produce
+  correctly-formatted, correctly-grounded output before switching -- confirmed by a full
+  golden-set eval run (19/19 passing) and the full pytest suite with zero Groq-related flakiness,
+  vs. intermittent failures under both prior models from quota/rate-limit exhaustion.
 - **Prompt** (`app/prompts/rag_system_prompt.txt`): instructs the model to answer only from the
   numbered context sections, cite inline with `[n]`, never ask for PII, and respond in a strict
   JSON envelope (`answer`, `grounded`, `citations_used`). The instruction is to be *thorough* --
@@ -441,8 +454,9 @@ profile (mean/p50/p95/p99), and a genuine concurrent burst (`asyncio.gather`, no
 | `GET /retrieve` | steady state (corpus cache warm) | 192ms | 148ms | 501ms | 501ms |
 | `GET /retrieve` | first request after backend idle | up to ~4.9s (one-time) | — | — | — |
 | `GET /retrieve` | 40 concurrent requests vs. a 30/min limit | 2366ms | 2649ms | 3373ms | 3374ms |
+| `POST /chat` | steady state, real Groq generation (`llama-4-scout-17b-16e-instruct`) | 1837ms | 1817ms | 2204ms | 2204ms |
 
-Two real findings, not just numbers:
+Three real findings, not just numbers:
 - **First-request latency spike**: the very first `/retrieve` call after the backend has been
   idle took ~4.9s against a ~150-200ms steady state — confirmed by re-running immediately after
   (no more spike) and checking `HybridRetriever._get_corpus`
@@ -458,14 +472,16 @@ Two real findings, not just numbers:
   parallelize for free across 30 simultaneous requests on one process. The rate limit protects
   against unbounded cost, not against per-request slowdown under legitimate concurrent load —
   worth knowing before assuming 30/min is "free" at the ceiling.
-
-`/chat` benchmarking was run but not usably reported here: Groq's free-tier daily token quota
-(100k/day) was exhausted from earlier testing during this same session, so all 8 sampled
-`/chat` calls hit the graceful-fallback path (`"I'm having trouble generating an answer..."`)
-rather than real generation — the script itself detects and flags this
-(`bench_chat`'s degraded-response check) rather than silently reporting fast-fail latency as if
-it were real Groq generation time. Re-run `scripts/load_test.py` once quota resets for real
-end-to-end `/chat` numbers.
+- **`/chat` end-to-end latency is dominated by Groq generation, not this app's own overhead**:
+  ~1.8s median for a full round trip (profile check, retrieval, reranking, prompt construction,
+  Groq generation, citation filtering) against `/retrieve`'s ~150ms steady-state median for the
+  retrieval+reranking portion alone — the LLM call itself is the majority of the latency budget,
+  which is the expected shape for a RAG chatbot and not something this app's own code can
+  meaningfully optimize further without changing models. (An earlier run of this same benchmark
+  hit Groq's exhausted daily token quota and only measured the graceful-fallback fast-fail path;
+  `bench_chat` detects and flags that case rather than silently reporting it as real generation
+  time -- see the Groq Integration section above for how the model was chosen to reduce how often
+  that quota exhaustion happens.)
 
 ## Deployment
 

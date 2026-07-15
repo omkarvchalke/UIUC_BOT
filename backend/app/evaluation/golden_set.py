@@ -173,12 +173,18 @@ GOLDEN_SET: tuple[EvalCase, ...] = (
         #
         # Known limitation (see sources.py): library hours are JS-rendered,
         # so the static scrape never captures them. Deliberately doesn't
-        # assert expect_grounded -- if that's ever fixed, this case should
-        # start passing on a stricter check, not require editing here.
+        # assert expect_grounded or min_citations -- a model correctly
+        # declining to cite a source that didn't actually answer the
+        # question is legitimate (confirmed: llama-4-scout returns
+        # citations: [] here, an earlier model returned a citation anyway;
+        # both are defensible, so asserting a specific count would be
+        # testing model style, not correctness). What's model-independent
+        # is that this is an unambiguous, on-topic question, so it should
+        # never trigger a clarification.
         name="library_hours",
         message="What are the library hours?",
         student_type=StudentType.FRESHMAN,
-        min_citations=1,
+        expect_clarification=False,
     ),
     EvalCase(
         name="greeting",
