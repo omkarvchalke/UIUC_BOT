@@ -1,6 +1,11 @@
+import asyncio
+
+import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import app.api.retrieve as retrieve_module
+from app.core.config import Settings
 from app.main import app
 from app.models.document import SourceType, Topic
 from app.repositories.document_repository import DocumentRepository
@@ -66,3 +71,25 @@ async def test_retrieve_endpoint_respects_topic_filter(
 
     assert response.status_code == 200
     assert response.json()["results"] == []
+
+
+async def test_retrieve_rate_limit_holds_under_real_concurrency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # test_chat_api.py's rate-limit test fires requests sequentially, which
+    # only proves the counter increments correctly -- it doesn't prove the
+    # limiter is safe against requests that actually arrive at once. This
+    # fires 10 real concurrent requests against a limit of 5 via
+    # asyncio.gather and checks the split is exact, the way a burst from
+    # several simultaneous users actually would.
+    tight_settings = Settings(retrieve_rate_limit="5/minute")
+    monkeypatch.setattr(retrieve_module, "get_settings", lambda: tight_settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        responses = await asyncio.gather(
+            *(client.get("/api/v1/retrieve", params={"query": "housing"}) for _ in range(10))
+        )
+
+    statuses = [r.status_code for r in responses]
+    assert statuses.count(200) == 5
+    assert statuses.count(429) == 5

@@ -63,7 +63,8 @@ Generation, and the app never asks for personally identifiable information.
 │   │   ├── evaluation/           # Golden-set answer-quality eval (cases + runner)
 │   │   └── utils/                 # Shared helpers
 │   ├── migrations/            # Alembic migrations (async env.py)
-│   ├── scripts/                # run_ingestion.py / run_indexing.py / eval_answers.py CLI entrypoints
+│   ├── scripts/                # run_ingestion.py / run_indexing.py / run_crawl.py /
+│   │                              discover_sources.py / eval_answers.py / load_test.py entrypoints
 │   ├── tests/
 │   ├── alembic.ini
 │   ├── pyproject.toml (uv)
@@ -404,9 +405,12 @@ run in the regular suite, since that part needs no network call.
 - **Rate limiting** (`app/core/rate_limit.py`, slowapi): `/chat` (20/min per IP, configurable via
   `Settings.chat_rate_limit`) and `/retrieve` (30/min) are throttled — `/chat` calls a paid Groq
   API per request and `/retrieve` runs embedding + cross-encoder inference, so an abusive or
-  looping client shouldn't be able to run either up unbounded. Covered by
-  `tests/test_chat_api.py::test_chat_enforces_rate_limit`, which overrides the limit to 2/min and
-  asserts the 3rd request comes back `429`.
+  looping client shouldn't be able to run either up unbounded. Covered at two levels:
+  `tests/test_chat_api.py::test_chat_enforces_rate_limit` proves the counter logic sequentially,
+  and `tests/test_retrieve_api.py::test_retrieve_rate_limit_holds_under_real_concurrency` fires 10
+  real concurrent requests via `asyncio.gather` against a 5/min limit and asserts an exact 5/5
+  split — sequential calls alone don't prove a limiter is safe against requests that actually
+  arrive at once.
 - **Model loading**: the embedding model and cross-encoder reranker are loaded once per process
   (`@lru_cache`-wrapped singletons in `app/embeddings/embedder.py` and
   `app/retrieval/reranker.py`), not per-request — both are CPU-only and loading them is the
@@ -415,6 +419,53 @@ run in the regular suite, since that part needs no network call.
   (default 10) are now explicit, configurable settings passed to `create_async_engine`
   (`app/database/session.py`), rather than relying on SQLAlchemy's implicit defaults — tunable
   per deployment without a code change.
+
+### Load testing
+
+```bash
+cd backend && uv run python -m scripts.load_test          # full run, needs a real GROQ_API_KEY
+uv run python -m scripts.load_test --skip-chat              # skip the Groq-backed /chat benchmark
+```
+
+Not part of pytest/CI — needs a live backend and a real ingested corpus, and a full run takes a
+couple of minutes (deliberately paced to stay under each endpoint's own rate limit, plus a 60s
+settle period before the burst test). Measures two things: a sequential per-endpoint latency
+profile (mean/p50/p95/p99), and a genuine concurrent burst (`asyncio.gather`, not a loop) against
+`/retrieve`'s rate limiter.
+
+**Results from a real run** (dev machine, local Docker Compose stack, 220-document corpus):
+
+| Endpoint | Condition | Mean | p50 | p95 | p99 |
+|---|---|---|---|---|---|
+| `GET /health` | steady state | 3ms | 1ms | 15ms | 15ms |
+| `GET /retrieve` | steady state (corpus cache warm) | 192ms | 148ms | 501ms | 501ms |
+| `GET /retrieve` | first request after backend idle | up to ~4.9s (one-time) | — | — | — |
+| `GET /retrieve` | 40 concurrent requests vs. a 30/min limit | 2366ms | 2649ms | 3373ms | 3374ms |
+
+Two real findings, not just numbers:
+- **First-request latency spike**: the very first `/retrieve` call after the backend has been
+  idle took ~4.9s against a ~150-200ms steady state — confirmed by re-running immediately after
+  (no more spike) and checking `HybridRetriever._get_corpus`
+  (`app/retrieval/hybrid_search.py`), which lazily loads and BM25-indexes every matching chunk on
+  first use per request-scoped instance. The corpus grew from 33 to 220 documents during this
+  session's crawler work, making that cold path noticeably more expensive than it used to be.
+  Not urgent at current corpus size, but worth a pre-warming request on startup if the corpus
+  keeps growing.
+- **Rate limiter enforces exactly, but accepted requests slow down under real contention**: 40
+  concurrent `/retrieve` requests against the 30/min limit split exactly 30 accepted / 10
+  rejected (`429`) — precise, not approximate. But the 30 accepted requests took a mean of 2.4s
+  (vs. ~150-200ms uncontended), because the cross-encoder reranker's CPU-bound inference doesn't
+  parallelize for free across 30 simultaneous requests on one process. The rate limit protects
+  against unbounded cost, not against per-request slowdown under legitimate concurrent load —
+  worth knowing before assuming 30/min is "free" at the ceiling.
+
+`/chat` benchmarking was run but not usably reported here: Groq's free-tier daily token quota
+(100k/day) was exhausted from earlier testing during this same session, so all 8 sampled
+`/chat` calls hit the graceful-fallback path (`"I'm having trouble generating an answer..."`)
+rather than real generation — the script itself detects and flags this
+(`bench_chat`'s degraded-response check) rather than silently reporting fast-fail latency as if
+it were real Groq generation time. Re-run `scripts/load_test.py` once quota resets for real
+end-to-end `/chat` numbers.
 
 ## Deployment
 
