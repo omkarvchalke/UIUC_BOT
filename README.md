@@ -5,14 +5,16 @@ and international students at the University of Illinois Urbana-Champaign (UIUC)
 grounded exclusively in official, publicly available UIUC resources via Retrieval-Augmented
 Generation, and the app never asks for personally identifiable information.
 
-> **Status:** Phases 1-6 complete (architecture/Docker, backend database layer, document
-> ingestion, embeddings + Qdrant + hybrid retrieval, LangGraph orchestration, Groq generation).
-> `POST /api/v1/chat` runs the full graph — profile checks, intent detection, topic
-> classification, hybrid retrieval, cross-encoder reranking, real Groq-generated answers with
-> self-reported groundedness, and citations built only from sections the model actually cited.
-> **Not yet verified against a real Groq API key** — falls back to the deterministic Phase 5
-> generator until `GROQ_API_KEY` is set (see Groq Integration below). The chat UI is next
-> (Phase 7).
+> **Status:** Phases 1-7 complete (architecture/Docker, backend database layer, document
+> ingestion, embeddings + Qdrant + hybrid retrieval, LangGraph orchestration, Groq generation,
+> Next.js chat UI). `POST /api/v1/chat` runs the full graph — profile checks, intent detection,
+> topic classification, hybrid retrieval, cross-encoder reranking, real Groq-generated answers
+> with self-reported groundedness, and citations built only from sections the model actually
+> cited. The chat UI (onboarding, suggested questions, source panel, dark mode) is live and
+> browser-tested end-to-end against the real backend. **Not yet verified against a real Groq API
+> key** — falls back to the deterministic Phase 5 generator until `GROQ_API_KEY` is set (see
+> Groq Integration below); answer text is noticeably rougher until then (verbatim extracted
+> chunk text rather than synthesized prose). Testing (Phase 8) is next.
 
 ## Tech Stack
 
@@ -57,11 +59,11 @@ Generation, and the app never asks for personally identifiable information.
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
-│   │   ├── app/              # Next.js App Router routes
-│   │   ├── components/        # UI components (shadcn/ui in components/ui)
-│   │   ├── hooks/               # React hooks
-│   │   ├── services/             # API client
-│   │   ├── types/                 # Shared TS types
+│   │   ├── app/              # Next.js App Router routes (page.tsx is the chat page)
+│   │   ├── components/        # UI components (shadcn/ui in components/ui, chat UI in components/chat)
+│   │   ├── hooks/               # useSession, useChat
+│   │   ├── services/             # API client (chatApi.ts, api.ts)
+│   │   ├── types/                 # Shared TS types matching backend schemas
 │   │   └── styles/                 # Global/shared styles
 │   └── Dockerfile
 ├── docs/
@@ -218,6 +220,38 @@ answer. Also tightened the admissions topic description to reduce future collisi
 `tests/test_graph.py::test_retrieval_is_not_broken_by_wrong_topic_classification` as a
 regression test using a stub classifier that's always wrong, so retrieval correctness doesn't
 depend on the embedding model's classification behavior staying the same.
+
+## Frontend (Chat UI)
+
+A Next.js (App Router) single-page chat interface at `frontend/src/app/page.tsx`, built directly
+against the real `POST /api/v1/chat` and `POST /api/v1/sessions` endpoints:
+
+- **Onboarding** (`components/chat/StudentTypeSelector.tsx`): asks student type via a
+  *structured* picker (freshman/transfer/graduate/international/skip) before the first message,
+  rather than relying on the backend's text-based clarification. This is a deliberate choice:
+  the backend's clarification asks the question in natural language but has no way to parse a
+  free-text answer back into `student_type` (that needs real NLU, not yet built) — a structured
+  picker sidesteps that dead end for the common case entirely, while the backend's own
+  clarification flow still fires correctly for genuinely ambiguous questions later in the
+  conversation.
+- **Conversation memory** is client-side (`hooks/useChat.ts`, localStorage keyed by
+  `session_id`), not fetched from the backend checkpointer: the checkpointer stores message
+  history but not per-message citations, so a naive history-fetch endpoint would lose citation
+  data on page reload that client-side storage keeps intact.
+- **Source panel** (`components/chat/SourcePanel.tsx`): a slide-over sheet per assistant message
+  showing citation cards (title, department, topic, link to the official page) — not a single
+  persistent side panel, so each answer's sources stay attached to that specific answer as the
+  conversation grows.
+- **Groundedness surfaced in the UI**: a message with `grounded: false` shows an inline "this
+  answer may be incomplete" notice; a `needs_clarification: true` message shows a "Clarifying
+  question" label instead of being presented as a normal answer.
+- **Dark mode** via `next-themes` (`components/ThemeProvider.tsx`, `ThemeToggle.tsx`), system
+  preference by default, manually toggleable, persisted.
+- Browser-tested end-to-end with Playwright against both the dev server and the production
+  Docker build (onboarding, suggested questions, a real chat round-trip, source panel, dark
+  mode, mobile viewport, the clarification flow) — zero console errors across all of it. Answer
+  *text quality* in those screenshots reflects the Phase 5 fallback generator (see Groq
+  Integration above), not a frontend issue.
 
 ## Testing
 
