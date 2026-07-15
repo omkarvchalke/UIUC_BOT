@@ -245,7 +245,13 @@ curl -X POST localhost:8000/api/v1/chat \
 
 - **Prompt** (`app/prompts/rag_system_prompt.txt`): instructs the model to answer only from the
   numbered context sections, cite inline with `[n]`, never ask for PII, and respond in a strict
-  JSON envelope (`answer`, `grounded`, `citations_used`).
+  JSON envelope (`answer`, `grounded`, `citations_used`). The instruction is to be *thorough* --
+  walk through every relevant step/requirement/option in the cited context rather than
+  compressing a multi-part answer into one terse sentence -- not concise; a student asking
+  instead of reading the source page wants the full picture, not a summary that still requires
+  clicking through. Paired with raising the reranker's `top_k` from 5 to 8
+  (`app/graph/nodes.py::make_reranker_node`) so the model actually has enough retrieved material
+  to be thorough with, rather than being told to elaborate on 5 short chunks.
 - **Groundedness self-report**: the model reports whether its own answer is actually supported
   by the cited context — the same pattern used in an earlier version of this project to catch a
   real "high confidence but the model doesn't actually know" failure mode. A parse failure (the

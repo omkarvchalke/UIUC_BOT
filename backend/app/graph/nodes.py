@@ -198,7 +198,14 @@ def make_reranker_node(deps: GraphDependencies) -> Node:
     async def rerank(state: GraphState) -> dict[str, Any]:
         query = _latest_human_message(state)
         candidates = [(c["content"], c) for c in state.get("retrieved_chunks", [])]
-        reranked = deps.reranker.rerank(query, candidates, top_k=5)
+        # Raised from 5: answers were coming back thin partly because the
+        # model only had 5 chunks of material to work with even after the
+        # prompt was told to be thorough -- 8 gives it enough breadth to
+        # cover multi-part questions (e.g. "what do I need to submit")
+        # without the context growing unreasonably large (Llama 3.3's
+        # context window has plenty of headroom for 8 short-to-medium
+        # chunks).
+        reranked = deps.reranker.rerank(query, candidates, top_k=8)
         return {
             "reranked_chunks": [{**chunk, "rerank_score": score} for chunk, score in reranked]
         }
