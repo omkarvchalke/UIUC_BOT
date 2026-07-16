@@ -110,5 +110,5 @@ class IngestionService:
     def _parse(source: SourceConfig, raw_bytes: bytes) -> ExtractedDocument:
         if source.source_type is SourceType.HTML:
             html = raw_bytes.decode("utf-8", errors="replace")
-            return parse_html(html, fallback_title=source.fallback_title)
+            return parse_html(html, base_url=source.url, fallback_title=source.fallback_title)
         return parse_pdf(raw_bytes, fallback_title=source.fallback_title)

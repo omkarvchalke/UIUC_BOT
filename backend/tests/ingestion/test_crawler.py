@@ -19,11 +19,15 @@ class _StubClassifier:
         return TopicClassification(topic=Topic.HOUSING, confidence=0.9)
 
 
-def _page(title: str, body: str, links: tuple[str, ...] = ()) -> bytes:
+def _page(
+    title: str, body: str, links: tuple[str, ...] = (), *, canonical: str | None = None
+) -> bytes:
     link_html = "".join(f'<a href="{href}">link</a>' for href in links)
+    canonical_html = f'<link rel="canonical" href="{canonical}">' if canonical else ""
     return (
-        f"<html><head><title>{title}</title></head><body>{body}{link_html}</body></html>".encode()
-    )
+        f"<html><head><title>{title}</title>{canonical_html}</head>"
+        f"<body>{body}{link_html}</body></html>"
+    ).encode()
 
 
 def _site(pages: dict[str, bytes], robots: str | None = None) -> httpx.MockTransport:
@@ -345,3 +349,51 @@ async def test_rejects_duplicate_content_served_at_a_different_url() -> None:
     assert len(accepted_urls & shell_urls) == 1
     duplicate_reasons = [r for _, r in outcome.rejected if r.startswith("duplicate content")]
     assert len(duplicate_reasons) == 1
+
+
+async def test_accepted_source_uses_the_declared_canonical_url() -> None:
+    pages = {
+        "/tracked-link": _page(
+            "Real Page", _SUBSTANTIAL_TEXT, canonical="https://example.illinois.edu/real-page"
+        ),
+    }
+    seed = CrawlSeed(start_url="https://example.illinois.edu/tracked-link", department="Test Dept")
+    async with httpx.AsyncClient(transport=_site(pages)) as client:
+        outcome = await _crawler().crawl((seed,), client=client)
+
+    assert len(outcome.accepted) == 1
+    assert outcome.accepted[0].url == "https://example.illinois.edu/real-page"
+
+
+async def test_rejects_a_second_url_with_the_same_canonical_as_an_already_accepted_page() -> None:
+    # Two distinct starting URLs whose HTML happens to differ slightly (a
+    # cache-buster, an embedded nonce -- simulated here as different visible
+    # text) but which both declare the same canonical link are the same
+    # document; content-hash dedup alone wouldn't catch this since the raw
+    # text genuinely differs.
+    pages = {
+        "/hub": _page("Hub", _SUBSTANTIAL_TEXT, links=("/variant-a", "/variant-b")),
+        "/variant-a": _page(
+            "Variant A",
+            _SUBSTANTIAL_TEXT + " Some page-specific noise A.",
+            canonical="https://example.illinois.edu/real-page",
+        ),
+        "/variant-b": _page(
+            "Variant B",
+            _SUBSTANTIAL_TEXT + " Some different page-specific noise B.",
+            canonical="https://example.illinois.edu/real-page",
+        ),
+    }
+    seed = CrawlSeed(
+        start_url="https://example.illinois.edu/hub", department="Test Dept", max_depth=2
+    )
+    async with httpx.AsyncClient(transport=_site(pages)) as client:
+        outcome = await _crawler().crawl((seed,), client=client)
+
+    accepted_urls = {s.url for s in outcome.accepted}
+    assert "https://example.illinois.edu/real-page" in accepted_urls
+    assert len([u for u in accepted_urls if u == "https://example.illinois.edu/real-page"]) == 1
+    canonical_duplicate_reasons = [
+        r for _, r in outcome.rejected if r.startswith("duplicate canonical URL")
+    ]
+    assert len(canonical_duplicate_reasons) == 1

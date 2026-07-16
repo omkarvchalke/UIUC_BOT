@@ -3,13 +3,14 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from typing import Protocol
-from urllib.parse import urldefrag, urljoin, urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
 from app.core.logging import get_logger
 from app.embeddings.embedder import Embedder
+from app.ingestion.canonical import normalize_url
 from app.ingestion.fetch import FetchError, build_client, fetch_response
 from app.ingestion.html_loader import parse_html
 from app.ingestion.robots import RobotsChecker
@@ -126,22 +127,6 @@ class CrawlOutcome:
     content_chars: dict[str, int] = field(default_factory=dict)
 
 
-def _normalize(url: str) -> str:
-    # Lowercase scheme/host/path for dedup purposes: illinois.edu sites are
-    # served case-insensitively (WordPress etc.), so
-    # /Apply/Freshman/process and /apply/freshman/process are the same
-    # page. Without this, the crawler doesn't recognize a differently-cased
-    # link as a page already in the manifest and re-ingests it as a
-    # "new" duplicate. Query string is left as-is since query values can be
-    # genuinely case-sensitive.
-    without_fragment = urldefrag(url)[0]
-    parsed = urlparse(without_fragment)
-    normalized = parsed._replace(
-        scheme=parsed.scheme.lower(), netloc=parsed.netloc.lower(), path=parsed.path.lower()
-    )
-    return normalized.geturl().rstrip("/")
-
-
 def _extract_links(html: str, *, base_url: str) -> set[str]:
     soup = BeautifulSoup(html, "lxml")
     links: set[str] = set()
@@ -156,7 +141,7 @@ def _extract_links(html: str, *, base_url: str) -> set[str]:
         href = str(tag["href"]).strip()
         if href.startswith(("mailto:", "tel:", "javascript:", "#")):
             continue
-        links.add(_normalize(urljoin(base_url, href)))
+        links.add(normalize_url(urljoin(base_url, href)))
     return links
 
 
@@ -210,10 +195,10 @@ class Crawler:
     ) -> None:
         self._delay = politeness_delay
         self._min_chars = min_content_chars
-        # Normalized the same way as crawled URLs (see _normalize) so a
-        # case-variant of a manifest URL is still recognized as a duplicate.
+        # Normalized the same way as crawled URLs (see canonical.normalize_url)
+        # so a case-variant of a manifest URL is still recognized as a duplicate.
         source_urls = existing_urls if existing_urls is not None else {s.url for s in SOURCES}
-        self._existing_urls = frozenset(_normalize(u) for u in source_urls)
+        self._existing_urls = frozenset(normalize_url(u) for u in source_urls)
         # threshold=0.0: always take the best-scoring topic rather than
         # returning None below the usual 0.55 clarification threshold. That
         # threshold exists to decide whether to ask the *user* a clarifying
@@ -234,6 +219,14 @@ class Crawler:
         # same ~5000-char static shell. Without this, every route on a site
         # like that gets ingested as a separate "unique" document.
         self._content_hashes: dict[str, str] = {}
+        # Maps a canonical URL (see app/ingestion/canonical.py) to the first
+        # fetched URL seen with it, for the same reason and lifetime as
+        # _content_hashes above -- catches the case content-hash dedup
+        # can't: two different starting URLs (e.g. a tracking-param variant
+        # and the plain URL) whose *rendered* HTML differs slightly (an
+        # embedded nonce, a cache-buster) but which both declare the same
+        # <link rel="canonical">.
+        self._canonical_urls_seen: dict[str, str] = {}
 
     async def crawl(
         self, seeds: tuple[CrawlSeed, ...], *, client: httpx.AsyncClient | None = None
@@ -260,7 +253,7 @@ class Crawler:
         accepted: list[SourceConfig] = []
         rejected: list[tuple[str, str]] = []
         content_chars: dict[str, int] = {}
-        queue: list[tuple[str, int]] = [(_normalize(seed.start_url), 0)]
+        queue: list[tuple[str, int]] = [(normalize_url(seed.start_url), 0)]
         visited: set[str] = set()
         seed_domain = urlparse(seed.start_url).netloc
 
@@ -297,14 +290,27 @@ class Crawler:
                 continue
 
             html = response.content.decode("utf-8", errors="replace")
-            extracted = parse_html(html, fallback_title=url)
+            extracted = parse_html(html, base_url=final_url, fallback_title=url)
+            # The URL actually stored/deduped against: the page's own
+            # declared canonical link when it has one, else just the
+            # (already-normalized) fetched URL. rel=canonical can only be
+            # read post-fetch, so this check happens here rather than
+            # alongside the pre-fetch queue/visited dedup above.
+            canonical = normalize_url(extracted.canonical_url) if extracted.canonical_url else url
 
-            if url in self._existing_urls:
+            if url in self._existing_urls or canonical in self._existing_urls:
                 rejected.append((url, "already in the manifest"))
             elif _looks_like_error_page(extracted.title):
                 rejected.append((url, "looks like a soft-404 error page"))
             elif len(extracted.text) < self._min_chars:
                 rejected.append((url, f"too thin ({len(extracted.text)} chars)"))
+            elif canonical in self._canonical_urls_seen:
+                rejected.append(
+                    (
+                        url,
+                        f"duplicate canonical URL (same as {self._canonical_urls_seen[canonical]})",
+                    )
+                )
             else:
                 content_hash = hashlib.sha256(extracted.text.encode("utf-8")).hexdigest()
                 duplicate_of = self._content_hashes.get(content_hash)
@@ -316,9 +322,10 @@ class Crawler:
                         rejected.append((url, "could not classify a topic"))
                     else:
                         self._content_hashes[content_hash] = url
+                        self._canonical_urls_seen[canonical] = url
                         accepted.append(
                             SourceConfig(
-                                url=url,
+                                url=canonical,
                                 department=seed.department,
                                 topic=topic,
                                 source_type=SourceType.HTML,
@@ -328,7 +335,7 @@ class Crawler:
                                 ),
                             )
                         )
-                        content_chars[url] = len(extracted.text)
+                        content_chars[canonical] = len(extracted.text)
 
             if depth >= seed.max_depth:
                 continue

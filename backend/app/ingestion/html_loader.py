@@ -2,6 +2,7 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup, Tag
 
+from app.ingestion.canonical import extract_canonical_link
 from app.ingestion.cleaning import clean_text
 from app.ingestion.extracted_document import ExtractedDocument
 from app.ingestion.timestamps import ensure_utc
@@ -11,9 +12,18 @@ _LAST_UPDATED_META_NAMES = ("last-modified", "revised", "date", "dcterms.modifie
 _LAST_UPDATED_META_PROPERTIES = ("article:modified_time", "article:published_time")
 
 
-def parse_html(html: str, *, fallback_title: str = "Untitled") -> ExtractedDocument:
-    """Parse raw HTML into cleaned, citable text plus whatever metadata the page exposes."""
+def parse_html(html: str, *, base_url: str, fallback_title: str = "Untitled") -> ExtractedDocument:
+    """Parse raw HTML into cleaned, citable text plus whatever metadata the
+    page exposes. base_url is needed to resolve a <link rel="canonical">
+    that uses a relative href -- always available at every call site (it's
+    the URL that was just fetched to get this HTML)."""
     soup = BeautifulSoup(html, "lxml")
+
+    # Read before _NOISE_TAGS strips <head> content -- canonical links live
+    # in <head>, and "header" (a noise tag) is a *different*, unrelated
+    # element (page banner chrome), but a defensive ordering here costs
+    # nothing and avoids ever depending on that distinction staying true.
+    canonical_url = extract_canonical_link(soup, base_url=base_url)
 
     for tag in soup(_NOISE_TAGS):
         tag.decompose()
@@ -22,7 +32,9 @@ def parse_html(html: str, *, fallback_title: str = "Untitled") -> ExtractedDocum
     text = clean_text(soup.get_text(separator="\n"))
     last_updated = ensure_utc(_extract_last_updated(soup))
 
-    return ExtractedDocument(title=title, text=text, last_updated=last_updated)
+    return ExtractedDocument(
+        title=title, text=text, last_updated=last_updated, canonical_url=canonical_url
+    )
 
 
 def _extract_title(soup: BeautifulSoup) -> str | None:
