@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.ingestion.chunking import ChunkerConfig, RecursiveCharacterChunker
 from app.ingestion.extracted_document import ExtractedDocument
-from app.ingestion.fetch import FetchError, build_client, fetch_url
+from app.ingestion.fetch import FetchError, build_client, fetch_response, fetch_url
 from app.ingestion.html_loader import parse_html
 from app.ingestion.metadata.audience import infer_audience
 from app.ingestion.metadata.document_type import classify_document_type
@@ -58,13 +58,44 @@ class IngestionService:
             )
 
     async def ingest_source(
-        self, source: SourceConfig, *, http_client: httpx.AsyncClient | None = None
+        self,
+        source: SourceConfig,
+        *,
+        http_client: httpx.AsyncClient | None = None,
+        incremental: bool = False,
     ) -> IngestResult:
-        try:
-            raw_bytes = await fetch_url(source.url, client=http_client)
-        except FetchError as exc:
-            logger.warning("ingestion_fetch_failed", url=source.url, error=str(exc))
-            return IngestResult(url=source.url, status="failed", error=str(exc))
+        existing = await self._repository.get_by_url(source.url)
+
+        # incremental (scripts/run_ingestion.py --incremental): a
+        # conditional GET using the stored last_updated, so an unchanged
+        # page costs one small request instead of a full fetch + parse +
+        # hash + compare. Only possible when there's a prior last_updated
+        # to compare against -- a source with none (many pages don't
+        # publish a last-modified signal at all, see html_loader.py) always
+        # falls through to a normal full fetch below.
+        if incremental and existing is not None and existing.last_updated is not None:
+            try:
+                probe = await fetch_response(
+                    source.url, client=http_client, if_modified_since=existing.last_updated
+                )
+            except FetchError as exc:
+                logger.warning("ingestion_fetch_failed", url=source.url, error=str(exc))
+                return IngestResult(url=source.url, status="failed", error=str(exc))
+            if probe.status_code == 304:
+                await self._repository.touch_last_crawled(existing.id)
+                logger.info("ingestion_source_not_modified", url=source.url)
+                return IngestResult(url=source.url, status="skipped")
+            # 200: genuinely modified (or the server ignored the
+            # conditional header, which is legal -- If-Modified-Since is
+            # advisory). Reuse this response's body instead of fetching
+            # the same URL a second time.
+            raw_bytes = probe.content
+        else:
+            try:
+                raw_bytes = await fetch_url(source.url, client=http_client)
+            except FetchError as exc:
+                logger.warning("ingestion_fetch_failed", url=source.url, error=str(exc))
+                return IngestResult(url=source.url, status="failed", error=str(exc))
 
         try:
             extracted = self._parse(source, raw_bytes)
@@ -78,13 +109,10 @@ class IngestionService:
 
         content_hash = hashlib.sha256(extracted.text.encode("utf-8")).hexdigest()
 
-        existing = await self._repository.get_by_url(source.url)
         if existing is not None and existing.content_hash == content_hash:
             # Still worth recording that this URL was checked, even though
-            # its content didn't change -- see incremental crawling
-            # (scripts/run_crawl.py --incremental), which uses
-            # last_crawled_at to decide whether a URL is due for a
-            # conditional-GET recheck at all.
+            # its content didn't change (e.g. the server ignored the
+            # conditional header above, or this was a non-incremental run).
             await self._repository.touch_last_crawled(existing.id)
             logger.info("ingestion_source_unchanged", url=source.url)
             return IngestResult(url=source.url, status="skipped")
@@ -121,11 +149,15 @@ class IngestionService:
         )
         return IngestResult(url=source.url, status=status, chunk_count=len(chunks))
 
-    async def ingest_all(self, sources: Iterable[SourceConfig] = SOURCES) -> list[IngestResult]:
+    async def ingest_all(
+        self, sources: Iterable[SourceConfig] = SOURCES, *, incremental: bool = False
+    ) -> list[IngestResult]:
         results = []
         async with build_client() as client:
             for source in sources:
-                results.append(await self.ingest_source(source, http_client=client))
+                results.append(
+                    await self.ingest_source(source, http_client=client, incremental=incremental)
+                )
         return results
 
     @staticmethod

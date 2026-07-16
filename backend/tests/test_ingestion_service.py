@@ -19,6 +19,16 @@ _HTML_V2 = (
     "<body><h1>Test Housing Page</h1>"
     "<p>Freshmen must live on campus for two full years now.</p></body></html>"
 )
+# Has a last-modified meta tag, unlike _HTML_V1/_HTML_V2 -- needed for the
+# incremental-mode tests, since a conditional GET is only attempted when
+# there's a prior last_updated to send as If-Modified-Since (see
+# IngestionService.ingest_source).
+_HTML_WITH_LAST_MODIFIED = (
+    "<html><head><title>Test Housing Page</title>"
+    '<meta name="last-modified" content="2026-03-15T10:00:00+00:00"></head>'
+    "<body><h1>Test Housing Page</h1>"
+    "<p>Freshmen must live on campus during their first year.</p></body></html>"
+)
 
 
 def _source(
@@ -37,6 +47,20 @@ def _source(
 
 def _mock_client(content: bytes) -> httpx.AsyncClient:
     def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=content)
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+def _conditional_mock_client(
+    content: bytes, *, requests_seen: list[httpx.Request]
+) -> httpx.AsyncClient:
+    # Simulates a real conditional-GET-aware server: 304 (no body) when the
+    # client sends If-Modified-Since, a normal 200 otherwise.
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(request)
+        if "if-modified-since" in request.headers:
+            return httpx.Response(304)
         return httpx.Response(200, content=content)
 
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -189,6 +213,74 @@ async def test_ingest_source_updates_last_crawled_at_even_when_content_is_unchan
         second_crawled_at = (await _get_with_chunks(repository, _source().url)).last_crawled_at
         assert second_crawled_at is not None
         assert second_crawled_at >= first_crawled_at
+
+
+async def test_incremental_ingest_sends_no_conditional_header_on_first_ingestion(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # No existing document yet -- nothing to compare against, so this must
+    # be a normal, unconditional fetch regardless of incremental=True.
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+        requests_seen: list[httpx.Request] = []
+
+        async with _conditional_mock_client(
+            _HTML_WITH_LAST_MODIFIED.encode(), requests_seen=requests_seen
+        ) as client:
+            result = await service.ingest_source(_source(), http_client=client, incremental=True)
+
+        assert result.status == "created"
+        assert len(requests_seen) == 1
+        assert "if-modified-since" not in requests_seen[0].headers
+
+
+async def test_incremental_ingest_skips_reparsing_on_304(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+
+        async with _mock_client(_HTML_WITH_LAST_MODIFIED.encode()) as client:
+            await service.ingest_source(_source(), http_client=client)
+        first_crawled_at = (await _get_with_chunks(repository, _source().url)).last_crawled_at
+
+        requests_seen: list[httpx.Request] = []
+        async with _conditional_mock_client(
+            _HTML_WITH_LAST_MODIFIED.encode(), requests_seen=requests_seen
+        ) as client:
+            result = await service.ingest_source(_source(), http_client=client, incremental=True)
+
+        assert result.status == "skipped"
+        # The server saw the conditional header and responded 304 -- the
+        # whole point of incremental mode.
+        assert "if-modified-since" in requests_seen[0].headers
+        second_crawled_at = (await _get_with_chunks(repository, _source().url)).last_crawled_at
+        assert second_crawled_at is not None
+        assert second_crawled_at >= first_crawled_at
+
+
+async def test_incremental_ingest_reingests_normally_on_200(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # The conditional GET's server ignores If-Modified-Since (legal --
+    # it's advisory) and returns changed content with 200 instead of 304.
+    # Incremental mode must fall through to a full re-ingest, not treat a
+    # 200 as "nothing to do."
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+
+        async with _mock_client(_HTML_WITH_LAST_MODIFIED.encode()) as client:
+            await service.ingest_source(_source(), http_client=client)
+
+        async with _mock_client(_HTML_V2.encode()) as client:
+            result = await service.ingest_source(_source(), http_client=client, incremental=True)
+
+        assert result.status == "updated"
+        document = await _get_with_chunks(repository, _source().url)
+        assert "two full years" in document.chunks[0].content
 
 
 async def test_ingest_source_handles_pdf_sources(
