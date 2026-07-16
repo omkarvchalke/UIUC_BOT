@@ -57,7 +57,11 @@
   --il-orange: #ff5f05;
   --il-blue: #13294b;
 
-  --background: oklch(0.99 0.003 260);
+  /* Warm cream, not plain white -- part of the neo-brutalist reference
+     look (chambanaevents.com) this theme is modeled after: a warm
+     background is what makes bold dark borders and hard offset shadows
+     read as intentional design rather than a rendering glitch. */
+  --background: oklch(0.97 0.015 80);
   --foreground: var(--il-blue);
   --card: oklch(1 0 0);
   --card-foreground: var(--il-blue);
@@ -153,5 +157,61 @@
     background-color: var(--muted-foreground);
     border-radius: 9999px;
     opacity: 0.4;
+  }
+}
+
+@layer components {
+  /* Neo-brutalist building blocks modeled on chambanaevents.com: a bold
+     "ink" border plus a hard (non-blurred) offset shadow, with a tactile
+     press interaction -- the shadow shrinks and the element shifts toward
+     it on hover/active, like a sticker being pushed into the page. Ink is
+     Illini Blue on the light cream background; in dark mode (already a
+     deep navy surface) it flips to Illini Orange so it still reads as a
+     shadow rather than disappearing into the background. Composed as
+     classes instead of inlined per component so every "brutal" surface
+     stays visually consistent and easy to retune from one place.
+     Used on the interactive/container surfaces (header logo, welcome card,
+     chips, buttons, source cards) -- deliberately NOT applied to chat
+     message bubbles, which stay plain for readability in a scrolling
+     conversation. */
+  .brutal-border {
+    border-width: 2px;
+    border-color: var(--il-blue);
+  }
+  .dark .brutal-border {
+    border-color: oklch(1 0 0 / 25%);
+  }
+
+  .brutal-shadow {
+    box-shadow: 4px 4px 0 0 var(--il-blue);
+  }
+  .dark .brutal-shadow {
+    box-shadow: 4px 4px 0 0 var(--il-orange);
+  }
+
+  /* Smaller offset for compact surfaces (chips, pills) where a 4px shadow
+     would look disproportionate. */
+  .brutal-shadow-sm {
+    box-shadow: 3px 3px 0 0 var(--il-blue);
+  }
+  .dark .brutal-shadow-sm {
+    box-shadow: 3px 3px 0 0 var(--il-orange);
+  }
+
+  .brutal-press {
+    transition:
+      transform 120ms ease,
+      box-shadow 120ms ease;
+  }
+  .brutal-press:hover {
+    transform: translate(1px, 1px);
+    box-shadow: 2px 2px 0 0 var(--il-blue);
+  }
+  .dark .brutal-press:hover {
+    box-shadow: 2px 2px 0 0 var(--il-orange);
+  }
+  .brutal-press:active {
+    transform: translate(4px, 4px);
+    box-shadow: none;
   }
 }

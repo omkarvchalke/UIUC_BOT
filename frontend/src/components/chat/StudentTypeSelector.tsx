@@ -58,23 +58,23 @@ export function StudentTypeSelector({ onSelect, isLoading }: StudentTypeSelector
         </p>
       </div>
 
-      <Card className="w-full gap-3 p-4">
-        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+      <Card className="brutal-border brutal-shadow w-full gap-3 rounded-3xl p-4">
+        <p className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
           What kind of student are you? (optional)
         </p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3">
           {OPTIONS.map(({ value, label, description, icon: Icon }) => (
             <button
               key={value}
               type="button"
               disabled={isLoading}
               onClick={() => onSelect(value)}
-              className="border-input hover:border-primary hover:bg-accent flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:pointer-events-none disabled:opacity-50"
+              className="brutal-border brutal-shadow brutal-press hover:bg-accent flex flex-col items-start gap-1 rounded-2xl bg-card p-3 text-left disabled:pointer-events-none disabled:opacity-50"
             >
               <span className="bg-accent flex h-7 w-7 items-center justify-center rounded-full">
                 <Icon className="text-primary h-4 w-4" />
               </span>
-              <span className="text-sm font-medium">{label}</span>
+              <span className="text-sm font-bold">{label}</span>
               <span className="text-muted-foreground text-xs">{description}</span>
             </button>
           ))}

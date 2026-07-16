@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw } from "lucide-react";
+import { GraduationCap, RotateCcw } from "lucide-react";
 
 import { ChatInput } from "@/components/chat/ChatInput";
 import { ChatWindow } from "@/components/chat/ChatWindow";
@@ -38,11 +38,18 @@ export default function ChatPage() {
   return (
     <div className="flex h-dvh flex-col">
       <div className="from-il-orange via-il-orange to-il-blue h-1 shrink-0 bg-gradient-to-r" />
-      <header className="bg-background/80 sticky top-0 z-10 flex items-center justify-between border-b px-4 py-3 backdrop-blur">
-        <span className="font-heading flex items-baseline gap-0.5 text-lg font-bold tracking-tight">
-          Illini<span className="text-primary">Guide</span>
-          <span className="text-muted-foreground ml-1 text-xs font-medium tracking-wide">AI</span>
-        </span>
+      <header className="bg-background/95 border-foreground sticky top-0 z-10 flex items-center justify-between border-b-2 px-4 py-3 backdrop-blur">
+        <div className="flex items-center gap-2.5">
+          <span className="brutal-border bg-primary text-primary-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+            <GraduationCap className="h-5 w-5" strokeWidth={2.5} />
+          </span>
+          <span className="font-heading flex items-baseline gap-0.5 text-lg font-bold tracking-tight">
+            Illini<span className="text-primary">Guide</span>
+            <span className="text-muted-foreground ml-1 text-xs font-medium tracking-wide">
+              AI
+            </span>
+          </span>
+        </div>
         <div className="flex items-center gap-1">
           {sessionId && (
             <Button
@@ -79,7 +86,7 @@ export default function ChatPage() {
               {messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-6 px-4 text-center">
                   <div className="space-y-1.5">
-                    <h2 className="font-heading text-xl font-bold tracking-tight">
+                    <h2 className="font-heading text-xl font-bold tracking-tight uppercase">
                       What can I help you with?
                     </h2>
                     <p className="text-muted-foreground text-sm">

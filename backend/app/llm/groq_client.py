@@ -29,7 +29,7 @@ class GroqClient:
         *,
         model: str | None = None,
         temperature: float = 0.2,
-        max_completion_tokens: int = 2048,
+        max_completion_tokens: int = 4096,
     ) -> str:
         settings = get_settings()
         try:
@@ -45,9 +45,12 @@ class GroqClient:
             # before generating a valid document", a 400 from Groq's
             # server-side JSON-mode validator) on a library-hours question
             # after the crawler (app/ingestion/crawler.py) added substantial
-            # real library content that hadn't existed before. 2048 is
-            # comfortably above any answer this prompt should produce while
-            # still bounding worst-case cost/latency per request.
+            # real library content that hadn't existed before. Raised from
+            # an initial 2048 after the *same* error recurred on a housing
+            # question that happened to enumerate every residence hall --
+            # "be thorough" plus a topic with a lot of enumerable content
+            # (dozens of halls) can genuinely need more room than a first
+            # guess at "generous" accounts for.
             response = await self._client.chat.completions.create(  # type: ignore[call-overload]
                 messages=messages,
                 model=model or settings.groq_model,

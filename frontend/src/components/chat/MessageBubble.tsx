@@ -17,9 +17,12 @@ export function MessageBubble({ message, onRateFeedback }: MessageBubbleProps) {
     <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[85%] rounded-3xl px-4 py-2.5 text-sm leading-6 sm:max-w-[75%]",
+          // brutal-border, not brutal-shadow: a bold outline keeps bubbles
+          // consistent with the rest of the theme without a wall of hard
+          // offset shadows down a scrolling conversation.
+          "brutal-border max-w-[85%] rounded-3xl px-4 py-2.5 text-sm leading-6 sm:max-w-[75%]",
           isUser
-            ? "bg-primary text-primary-foreground shadow-primary/20 rounded-br-md shadow-md"
+            ? "bg-primary text-primary-foreground rounded-br-md"
             : "bg-muted rounded-bl-md",
         )}
       >
