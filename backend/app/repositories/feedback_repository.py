@@ -1,5 +1,7 @@
 import uuid
+from datetime import datetime
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.feedback import Feedback, FeedbackRating
@@ -33,3 +35,10 @@ class FeedbackRepository:
         await self._db.commit()
         await self._db.refresh(feedback)
         return feedback
+
+    async def count_by_rating(self, *, since: datetime | None = None) -> dict[FeedbackRating, int]:
+        query = select(Feedback.rating, func.count()).group_by(Feedback.rating)
+        if since is not None:
+            query = query.where(Feedback.created_at >= since)
+        result = await self._db.execute(query)
+        return dict(result.tuples().all())

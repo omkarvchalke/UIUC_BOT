@@ -8,8 +8,10 @@ import app.api.chat as chat_module
 from app.core.config import Settings
 from app.ingestion.chunking import ChunkResult
 from app.main import app
+from app.models.chat_turn_event import ChatTurnIntent
 from app.models.conversation_session import StudentType
 from app.models.document import SourceType, Topic
+from app.repositories.chat_turn_event_repository import ChatTurnEventRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.session_repository import SessionRepository
 from app.repositories.vector_repository import VectorRepository
@@ -73,6 +75,21 @@ async def test_chat_greeting_returns_answer_without_citations(
     assert body["topic"] is None
     assert body["classification_confidence"] is None
 
+    # The gap this phase closes: graph_turn_complete used to only reach a
+    # log line, never Postgres. Confirm the API route's fire-and-forget
+    # analytics.record_turn() call actually persisted a row.
+    async with db_session_factory() as session:
+        events = await ChatTurnEventRepository(session).list_by_session(session_id)
+        assert len(events) == 1
+        assert events[0].intent is ChatTurnIntent.GREETING
+        assert events[0].topic is None
+        # greeting_answer() (app/graph/generation.py) returns grounded=True
+        # unconditionally -- a canned answer is trivially "grounded" in
+        # itself, there's no ungrounded-greeting case today.
+        assert events[0].grounded is True
+        assert events[0].needs_clarification is False
+        assert events[0].citation_count == 0
+
 
 async def test_chat_missing_profile_triggers_clarification(
     db_session_factory: async_sessionmaker[AsyncSession],
@@ -121,6 +138,15 @@ async def test_chat_full_question_returns_grounded_answer_with_citations(
     assert isinstance(body["citations"][0]["fused_score"], float)
     assert "subtopic" in body["citations"][0]
     assert body["topic"] == "transportation"
+
+    async with db_session_factory() as session:
+        events = await ChatTurnEventRepository(session).list_by_session(session_id)
+        assert len(events) == 1
+        assert events[0].intent is ChatTurnIntent.QUESTION
+        assert events[0].topic is Topic.TRANSPORTATION
+        assert events[0].grounded is True
+        assert events[0].citation_count == len(body["citations"])
+        assert events[0].latency_ms is not None
 
 
 async def test_chat_rejects_empty_message(override_checkpointer: None) -> None:

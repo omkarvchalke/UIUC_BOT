@@ -1,6 +1,7 @@
 "use client";
 
-import { Bug, GraduationCap, RotateCcw } from "lucide-react";
+import { BarChart3, Bug, GraduationCap, RotateCcw } from "lucide-react";
+import Link from "next/link";
 
 import { ChatInput } from "@/components/chat/ChatInput";
 import { ChatWindow } from "@/components/chat/ChatWindow";
@@ -72,6 +73,14 @@ export default function ChatPage() {
             aria-pressed={debugMode}
           >
             <Bug className={cn("h-4 w-4", debugMode && "text-primary")} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="View analytics dashboard"
+            render={<Link href="/analytics" />}
+          >
+            <BarChart3 className="h-4 w-4" />
           </Button>
           <ThemeToggle />
         </div>

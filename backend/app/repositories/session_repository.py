@@ -1,5 +1,7 @@
 import uuid
+from datetime import datetime
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation_session import ConversationSession, StudentType
@@ -43,3 +45,10 @@ class SessionRepository:
         await self._db.commit()
         await self._db.refresh(session)
         return session
+
+    async def count_sessions(self, *, since: datetime | None = None) -> int:
+        query = select(func.count()).select_from(ConversationSession)
+        if since is not None:
+            query = query.where(ConversationSession.created_at >= since)
+        result = await self._db.execute(query)
+        return result.scalar_one()

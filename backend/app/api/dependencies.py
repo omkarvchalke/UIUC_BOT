@@ -12,6 +12,7 @@ from app.graph.generation import AnswerGenerator, ExtractiveAnswerGenerator
 from app.graph.graph import build_graph
 from app.graph.state import GraphState
 from app.llm.groq_answer_generator import GroqAnswerGenerator
+from app.repositories.chat_turn_event_repository import ChatTurnEventRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.feedback_repository import FeedbackRepository
 from app.repositories.session_repository import SessionRepository
@@ -19,6 +20,7 @@ from app.repositories.vector_repository import VectorRepository
 from app.retrieval.hybrid_search import HybridRetriever
 from app.retrieval.reranker import CrossEncoderReranker
 from app.retrieval.topic_classifier import TopicClassifier
+from app.services.analytics_service import AnalyticsService
 from app.services.document_service import DocumentService
 from app.services.feedback_service import FeedbackService
 from app.services.session_service import SessionService
@@ -68,6 +70,29 @@ def get_feedback_service(
 
 
 FeedbackServiceDep = Annotated[FeedbackService, Depends(get_feedback_service)]
+
+
+def get_chat_turn_event_repository(db: DbSession) -> ChatTurnEventRepository:
+    return ChatTurnEventRepository(db)
+
+
+ChatTurnEventRepositoryDep = Annotated[
+    ChatTurnEventRepository, Depends(get_chat_turn_event_repository)
+]
+
+
+def get_analytics_service(
+    chat_turn_event_repository: ChatTurnEventRepositoryDep,
+    session_repository: SessionRepositoryDep,
+    feedback_repository: FeedbackRepositoryDep,
+    document_repository: DocumentRepositoryDep,
+) -> AnalyticsService:
+    return AnalyticsService(
+        chat_turn_event_repository, session_repository, feedback_repository, document_repository
+    )
+
+
+AnalyticsServiceDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 
 
 def get_vector_repository() -> VectorRepository:
