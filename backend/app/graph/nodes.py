@@ -206,7 +206,13 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
         logger.info(
             "graph_retrieve",
             session_id=state["session_id"],
-            topic=topic.value if topic else None,
+            # str(), not .value: topic came from state.get(), and on a turn
+            # that starts from a checkpoint restored from Postgres (see
+            # save_conversation_state below), it round-trips through JSON
+            # and comes back a plain str rather than a Topic instance.
+            # Topic is a StrEnum, so str() is correct either way -- .value
+            # crashes on the plain-str case.
+            topic=str(topic) if topic else None,
             topic_filter_applied=topic_filter_applied,
             result_count=len(results),
         )
@@ -317,7 +323,16 @@ def make_save_conversation_state_node() -> Node:
             "graph_turn_complete",
             session_id=state["session_id"],
             intent=state.get("intent"),
-            topic=topic.value if topic else None,
+            # str(), not .value -- see the identical comment in retrieve()
+            # above. This is the site where the bug actually surfaced: a
+            # greeting or missing-profile turn skips question_classification
+            # entirely (graph.py's routing), so topic here is whatever the
+            # Postgres checkpointer restored from a *previous* turn in this
+            # session -- a plain str, not a Topic instance, once a session
+            # has gone through at least one real question. Confirmed live:
+            # "AttributeError: 'str' object has no attribute 'value'" on the
+            # message right after a real question got a topic classified.
+            topic=str(topic) if topic else None,
             needs_clarification=state.get("needs_clarification", False),
             grounded=state.get("grounded"),
             citation_count=len(state.get("citations", [])),

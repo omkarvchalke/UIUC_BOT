@@ -98,7 +98,13 @@ class HybridRetriever:
         if cache_key not in self._corpus_cache:
             chunks = await self._documents.list_all_chunks_with_documents()
             if topic is not None:
-                chunks = [chunk for chunk in chunks if chunk.document.topic is topic]
+                # ==, not is: Topic is a StrEnum, and a caller's topic value
+                # isn't guaranteed to be the enum singleton -- graph/nodes.py
+                # found a real case where a checkpoint-restored topic comes
+                # back as a plain str with the same value. `is` would silently
+                # filter out every chunk in that case (0 results, not a
+                # crash) instead of matching correctly.
+                chunks = [chunk for chunk in chunks if chunk.document.topic == topic]
             if student_type is not None:
                 chunks = [
                     chunk

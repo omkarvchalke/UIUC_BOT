@@ -279,6 +279,46 @@ async def test_checkpointer_persists_messages_across_turns(
     assert len(second["messages"]) == 4
 
 
+async def test_greeting_after_a_classified_question_does_not_crash(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_vector_repository: VectorRepository,
+    test_checkpointer: AsyncPostgresSaver,
+) -> None:
+    """Regression test for a real bug hit live: a question that gets a real
+    topic classified, followed by a greeting-classified message in the same
+    session, crashed with "AttributeError: 'str' object has no attribute
+    'value'" in save_conversation_state. The greeting path (graph.py's
+    routing) skips question_classification entirely, so `topic` in state is
+    whatever the Postgres checkpointer restored from the *previous* turn --
+    and it comes back a plain str, not a Topic instance, once round-tripped
+    through the checkpointer's JSON serialization. Uses the real
+    AsyncPostgresSaver checkpointer (not a stub) since the bug is in that
+    serialization round-trip, not in graph logic a stub would still exercise.
+    """
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            test_vector_repository,
+            url="https://example.illinois.edu/housing",
+            title="Undergraduate Housing",
+            chunk_texts=[
+                "Freshmen must live in undergraduate residence halls during their first year."
+            ],
+            topic=Topic.HOUSING,
+        )
+        session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
+        graph = _build_test_graph(session, test_vector_repository, test_checkpointer)
+        config = config_for(session_id)
+
+        first = await graph.ainvoke(
+            turn_input(session_id, "Where do freshmen live on campus?"), config=config
+        )
+        second = await graph.ainvoke(turn_input(session_id, "hello"), config=config)
+
+    assert first["topic"] is Topic.HOUSING
+    assert second["intent"] == "greeting"
+
+
 async def test_clarification_asked_once_then_question_proceeds(
     db_session_factory: async_sessionmaker[AsyncSession],
     test_vector_repository: VectorRepository,
