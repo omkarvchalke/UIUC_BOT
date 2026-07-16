@@ -18,6 +18,7 @@ class RetrievedChunkState(TypedDict):
     url: str
     department: str
     topic: str
+    subtopic: str | None
     fused_score: float
     rerank_score: NotRequired[float]
 
@@ -27,6 +28,9 @@ class CitationState(TypedDict):
     url: str
     department: str
     topic: str
+    subtopic: str | None
+    fused_score: float
+    rerank_score: NotRequired[float]
 
 
 class GraphState(TypedDict):

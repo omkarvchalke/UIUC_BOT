@@ -22,4 +22,6 @@ async def chat(request: Request, payload: ChatRequest, graph: CompiledGraphDep) 
         grounded=result.get("grounded", False),
         needs_clarification=result.get("needs_clarification", False),
         citations=[ChatCitation(**citation) for citation in result.get("citations", [])],
+        topic=result.get("topic"),
+        classification_confidence=result.get("classification_confidence"),
     )

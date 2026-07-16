@@ -1,4 +1,4 @@
-# IlliniGuide AI
+# IlliniAssist AI
 
 An AI-powered onboarding assistant for prospective, admitted, freshman, transfer, graduate,
 and international students at the University of Illinois Urbana-Champaign (UIUC). Answers are

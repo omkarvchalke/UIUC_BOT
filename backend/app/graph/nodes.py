@@ -40,6 +40,7 @@ def _to_chunk_state(
         "url": chunk.url,
         "department": chunk.department,
         "topic": chunk.topic.value,
+        "subtopic": chunk.subtopic,
         "fused_score": chunk.fused_score,
     }
     if rerank_score is not None:
@@ -307,14 +308,17 @@ def make_citation_generator_node() -> Node:
             if chunk["url"] in seen_urls:
                 continue
             seen_urls.add(chunk["url"])
-            citations.append(
-                {
-                    "title": chunk["title"],
-                    "url": chunk["url"],
-                    "department": chunk["department"],
-                    "topic": chunk["topic"],
-                }
-            )
+            citation: CitationState = {
+                "title": chunk["title"],
+                "url": chunk["url"],
+                "department": chunk["department"],
+                "topic": chunk["topic"],
+                "subtopic": chunk["subtopic"],
+                "fused_score": chunk["fused_score"],
+            }
+            if "rerank_score" in chunk:
+                citation["rerank_score"] = chunk["rerank_score"]
+            citations.append(citation)
         return {"citations": citations}
 
     return citation_generator

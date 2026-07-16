@@ -41,6 +41,8 @@ describe("useChat", () => {
       grounded: true,
       needs_clarification: false,
       citations: [],
+      topic: null,
+      classification_confidence: null,
     });
 
     const { result } = renderHook(() => useChat("session-2"));
@@ -97,6 +99,8 @@ describe("useChat", () => {
       grounded: true,
       needs_clarification: false,
       citations: [],
+      topic: null,
+      classification_confidence: null,
     });
 
     const { result } = renderHook(() => useChat("session-5"));
@@ -119,6 +123,8 @@ describe("useChat", () => {
       grounded: true,
       needs_clarification: false,
       citations: [],
+      topic: null,
+      classification_confidence: null,
     });
 
     const { result } = renderHook(() => useChat("session-6"));
@@ -135,6 +141,8 @@ describe("useChat", () => {
       grounded: true,
       needs_clarification: false,
       citations: [],
+      topic: null,
+      classification_confidence: null,
     });
     const feedbackSpy = vi.spyOn(chatApi, "sendFeedback").mockResolvedValue(undefined);
 
@@ -167,6 +175,8 @@ describe("useChat", () => {
       grounded: true,
       needs_clarification: false,
       citations: [],
+      topic: null,
+      classification_confidence: null,
     });
     vi.spyOn(chatApi, "sendFeedback").mockRejectedValue(new Error("network error"));
 
@@ -189,6 +199,8 @@ describe("useChat", () => {
       grounded: true,
       needs_clarification: false,
       citations: [],
+      topic: null,
+      classification_confidence: null,
     });
     const feedbackSpy = vi.spyOn(chatApi, "sendFeedback").mockResolvedValue(undefined);
 

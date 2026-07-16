@@ -1,4 +1,4 @@
-import { AlertTriangle, HelpCircle } from "lucide-react";
+import { AlertTriangle, Bug, HelpCircle } from "lucide-react";
 
 import { FeedbackButtons } from "@/components/chat/FeedbackButtons";
 import { SourcePanel } from "@/components/chat/SourcePanel";
@@ -8,9 +8,10 @@ import type { ChatMessage, FeedbackRating } from "@/types/chat";
 interface MessageBubbleProps {
   message: ChatMessage;
   onRateFeedback?: (messageId: string, rating: FeedbackRating) => void;
+  debugMode?: boolean;
 }
 
-export function MessageBubble({ message, onRateFeedback }: MessageBubbleProps) {
+export function MessageBubble({ message, onRateFeedback, debugMode }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -42,8 +43,17 @@ export function MessageBubble({ message, onRateFeedback }: MessageBubbleProps) {
           </div>
         )}
 
+        {!isUser && debugMode && message.topic && (
+          <div className="text-muted-foreground mt-2 flex items-center gap-1 text-xs">
+            <Bug className="h-3 w-3" />
+            Topic: {message.topic}
+            {message.classificationConfidence != null &&
+              ` (${message.classificationConfidence.toFixed(2)})`}
+          </div>
+        )}
+
         {!isUser && message.citations && message.citations.length > 0 && (
-          <SourcePanel citations={message.citations} />
+          <SourcePanel citations={message.citations} debugMode={debugMode} />
         )}
 
         {!isUser && !message.needsClarification && onRateFeedback && (

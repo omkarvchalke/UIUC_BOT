@@ -82,9 +82,11 @@ async def test_greeting_returns_canned_response_without_retrieval(
         result = await graph.ainvoke(turn_input(session_id, "hello"), config=config_for(session_id))
 
     assert result["intent"] == "greeting"
-    assert "IlliniGuide" in result["answer"]
+    assert "IlliniAssist" in result["answer"]
     assert result["citations"] == []
     assert result.get("retrieved_chunks", []) == []
+    assert result.get("topic") is None
+    assert result.get("classification_confidence") is None
 
 
 async def test_first_turn_missing_profile_triggers_clarification(
@@ -154,6 +156,11 @@ async def test_full_question_flow_returns_grounded_answer_with_citations(
     assert "residence halls" in result["answer"]
     assert len(result["citations"]) >= 1
     assert result["citations"][0]["url"] == "https://example.illinois.edu/housing"
+    assert isinstance(result["citations"][0]["fused_score"], float)
+    assert "subtopic" in result["citations"][0]
+    reranked = result.get("reranked_chunks", [])
+    assert reranked and reranked[0]["url"] == "https://example.illinois.edu/housing"
+    assert reranked[0]["subtopic"] == result["citations"][0]["subtopic"]
 
 
 async def test_retrieval_falls_back_when_topic_classification_is_wrong(

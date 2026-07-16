@@ -10,7 +10,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "IlliniGuide AI"
+    app_name: str = "IlliniAssist AI"
     environment: str = "development"
     log_level: str = "INFO"
 

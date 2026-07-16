@@ -15,6 +15,9 @@ class ChatCitation(BaseModel):
     url: str
     department: str
     topic: Topic
+    subtopic: str | None = None
+    fused_score: float
+    rerank_score: float | None = None
 
 
 class ChatResponse(BaseModel):
@@ -22,3 +25,5 @@ class ChatResponse(BaseModel):
     grounded: bool
     needs_clarification: bool
     citations: list[ChatCitation]
+    topic: Topic | None = None
+    classification_confidence: float | None = None

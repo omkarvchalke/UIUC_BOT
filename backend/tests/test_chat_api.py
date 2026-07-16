@@ -66,8 +66,12 @@ async def test_chat_greeting_returns_answer_without_citations(
 
     assert response.status_code == 200
     body = response.json()
-    assert "IlliniGuide" in body["answer"]
+    assert "IlliniAssist" in body["answer"]
     assert body["citations"] == []
+    # Greeting turns skip question_classification entirely -- these should
+    # genuinely be absent/null, not just unpopulated by coincidence.
+    assert body["topic"] is None
+    assert body["classification_confidence"] is None
 
 
 async def test_chat_missing_profile_triggers_clarification(
@@ -114,6 +118,9 @@ async def test_chat_full_question_returns_grounded_answer_with_citations(
     assert body["grounded"] is True
     assert len(body["citations"]) >= 1
     assert body["citations"][0]["url"] == "https://example.illinois.edu/parking"
+    assert isinstance(body["citations"][0]["fused_score"], float)
+    assert "subtopic" in body["citations"][0]
+    assert body["topic"] == "transportation"
 
 
 async def test_chat_rejects_empty_message(override_checkpointer: None) -> None:

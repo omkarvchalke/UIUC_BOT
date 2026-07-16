@@ -7,7 +7,7 @@ from app.graph.state import RetrievedChunkState
 from app.models.conversation_session import StudentType
 
 _GREETING_ANSWER = (
-    "Hello! I'm IlliniGuide AI, an assistant for UIUC admissions, housing, registration, "
+    "Hello! I'm IlliniAssist AI, an assistant for UIUC admissions, housing, registration, "
     "financial aid, international student services, and more. What can I help you with?"
 )
 

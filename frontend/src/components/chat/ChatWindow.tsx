@@ -11,9 +11,10 @@ interface ChatWindowProps {
   messages: ChatMessage[];
   isSending: boolean;
   onRateFeedback?: (messageId: string, rating: FeedbackRating) => void;
+  debugMode?: boolean;
 }
 
-export function ChatWindow({ messages, isSending, onRateFeedback }: ChatWindowProps) {
+export function ChatWindow({ messages, isSending, onRateFeedback, debugMode }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,7 +25,12 @@ export function ChatWindow({ messages, isSending, onRateFeedback }: ChatWindowPr
     <ScrollArea className="h-full w-full">
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} onRateFeedback={onRateFeedback} />
+          <MessageBubble
+            key={message.id}
+            message={message}
+            onRateFeedback={onRateFeedback}
+            debugMode={debugMode}
+          />
         ))}
         {isSending && (
           <div className="flex justify-start">

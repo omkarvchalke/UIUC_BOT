@@ -50,7 +50,7 @@ export function StudentTypeSelector({ onSelect, isLoading }: StudentTypeSelector
     <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-6 px-4 text-center">
       <div className="space-y-2">
         <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-3xl">
-          Welcome to <span className="text-primary">IlliniGuide</span> AI
+          Welcome to <span className="text-primary">IlliniAssist</span> AI
         </h1>
         <p className="text-muted-foreground text-sm leading-6">
           Answers about admissions, housing, financial aid, and more — grounded only in official

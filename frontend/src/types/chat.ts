@@ -12,6 +12,12 @@ export interface Citation {
   url: string;
   department: string;
   topic: string;
+  // Debug-mode-only fields -- always present on the wire (see ChatCitation
+  // on the backend), kept optional here so existing Citation literals in
+  // tests/fixtures don't need updating.
+  subtopic?: string | null;
+  fused_score?: number;
+  rerank_score?: number | null;
 }
 
 export interface ChatApiResponse {
@@ -19,6 +25,8 @@ export interface ChatApiResponse {
   grounded: boolean;
   needs_clarification: boolean;
   citations: Citation[];
+  topic: string | null;
+  classification_confidence: number | null;
 }
 
 export type FeedbackRating = "helpful" | "not_helpful";
@@ -39,6 +47,8 @@ export interface ChatMessage {
   citations?: Citation[];
   grounded?: boolean;
   needsClarification?: boolean;
+  topic?: string | null;
+  classificationConfidence?: number | null;
   createdAt: string;
   // Only set on assistant messages -- the user question this answer was
   // responding to, stashed at creation time in useChat so feedback

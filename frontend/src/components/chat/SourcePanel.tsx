@@ -13,9 +13,10 @@ function topicLabel(topic: string): string {
 
 interface SourcePanelProps {
   citations: Citation[];
+  debugMode?: boolean;
 }
 
-export function SourcePanel({ citations }: SourcePanelProps) {
+export function SourcePanel({ citations, debugMode }: SourcePanelProps) {
   if (citations.length === 0) return null;
 
   return (
@@ -53,6 +54,17 @@ export function SourcePanel({ citations }: SourcePanelProps) {
               <Badge variant="secondary" className="w-fit text-[10px]">
                 {topicLabel(citation.topic)}
               </Badge>
+              {debugMode && (
+                <div className="text-muted-foreground flex flex-wrap gap-x-2 gap-y-0.5 text-[10px]">
+                  {citation.subtopic && <span>{topicLabel(citation.subtopic)}</span>}
+                  {citation.fused_score != null && (
+                    <span>fused: {citation.fused_score.toFixed(3)}</span>
+                  )}
+                  {citation.rerank_score != null && (
+                    <span>rerank: {citation.rerank_score.toFixed(3)}</span>
+                  )}
+                </div>
+              )}
             </a>
           ))}
         </div>

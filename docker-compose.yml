@@ -39,7 +39,7 @@ services:
       - path: backend/.env
         required: false
     environment:
-      APP_NAME: ${APP_NAME:-IlliniGuide AI}
+      APP_NAME: ${APP_NAME:-IlliniAssist AI}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       QDRANT_URL: http://qdrant:6333

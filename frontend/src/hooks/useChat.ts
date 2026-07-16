@@ -84,6 +84,8 @@ export function useChat(sessionId: string | null): UseChatResult {
           citations: response.citations,
           grounded: response.grounded,
           needsClarification: response.needs_clarification,
+          topic: response.topic,
+          classificationConfidence: response.classification_confidence,
           createdAt: new Date().toISOString(),
           question: trimmed,
         };

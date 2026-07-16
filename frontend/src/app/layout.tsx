@@ -25,7 +25,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "IlliniGuide AI",
+  title: "IlliniAssist AI",
   description:
     "AI-powered onboarding assistant for UIUC students, built on public official resources.",
 };

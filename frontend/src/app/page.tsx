@@ -1,6 +1,6 @@
 "use client";
 
-import { GraduationCap, RotateCcw } from "lucide-react";
+import { Bug, GraduationCap, RotateCcw } from "lucide-react";
 
 import { ChatInput } from "@/components/chat/ChatInput";
 import { ChatWindow } from "@/components/chat/ChatWindow";
@@ -10,7 +10,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChat } from "@/hooks/useChat";
+import { useDebugMode } from "@/hooks/useDebugMode";
 import { useSession } from "@/hooks/useSession";
+import { cn } from "@/lib/utils";
 
 export default function ChatPage() {
   const {
@@ -29,6 +31,7 @@ export default function ChatPage() {
     clearHistory,
     submitFeedback,
   } = useChat(sessionId);
+  const { debugMode, toggleDebugMode } = useDebugMode();
 
   function handleNewConversation() {
     clearHistory();
@@ -44,7 +47,7 @@ export default function ChatPage() {
             <GraduationCap className="h-5 w-5" strokeWidth={2.5} />
           </span>
           <span className="font-heading flex items-baseline gap-0.5 text-lg font-bold tracking-tight">
-            Illini<span className="text-primary">Guide</span>
+            Illini<span className="text-primary">Assist</span>
             <span className="text-muted-foreground ml-1 text-xs font-medium tracking-wide">
               AI
             </span>
@@ -61,6 +64,15 @@ export default function ChatPage() {
               <RotateCcw className="h-4 w-4" />
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleDebugMode}
+            aria-label={debugMode ? "Turn off debug mode" : "Turn on debug mode"}
+            aria-pressed={debugMode}
+          >
+            <Bug className={cn("h-4 w-4", debugMode && "text-primary")} />
+          </Button>
           <ThemeToggle />
         </div>
       </header>
@@ -100,6 +112,7 @@ export default function ChatPage() {
                   messages={messages}
                   isSending={isSending}
                   onRateFeedback={submitFeedback}
+                  debugMode={debugMode}
                 />
               )}
             </div>

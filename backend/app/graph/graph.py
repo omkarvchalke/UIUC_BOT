@@ -36,7 +36,7 @@ def _add_node(builder: _StateBuilder, name: str, node: nodes.Node) -> None:
 def build_graph(
     deps: GraphDependencies, *, checkpointer: BaseCheckpointSaver[str] | None = None
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
-    """Assembles the IlliniGuide AI conversation graph.
+    """Assembles the IlliniAssist AI conversation graph.
 
     Node order and names follow the spec's canonical list (Load Session ->
     Check Student Profile -> Intent Detection -> Question Classification ->

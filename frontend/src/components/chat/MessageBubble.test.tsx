@@ -119,4 +119,31 @@ describe("MessageBubble", () => {
     expect(screen.getByText(/thanks for the feedback/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /this answer was helpful/i })).not.toBeInTheDocument();
   });
+
+  it("hides the debug topic line when debugMode is off, even with a topic set", () => {
+    render(
+      <MessageBubble
+        message={baseMessage({ topic: "financial_aid", classificationConfidence: 0.82 })}
+      />,
+    );
+
+    expect(screen.queryByText(/Topic:/)).not.toBeInTheDocument();
+  });
+
+  it("shows a formatted debug topic line when debugMode is on", () => {
+    render(
+      <MessageBubble
+        message={baseMessage({ topic: "financial_aid", classificationConfidence: 0.82 })}
+        debugMode
+      />,
+    );
+
+    expect(screen.getByText("Topic: financial_aid (0.82)")).toBeInTheDocument();
+  });
+
+  it("hides the debug topic line when debugMode is on but the message has no topic", () => {
+    render(<MessageBubble message={baseMessage()} debugMode />);
+
+    expect(screen.queryByText(/Topic:/)).not.toBeInTheDocument();
+  });
 });
