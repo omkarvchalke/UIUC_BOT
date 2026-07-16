@@ -164,8 +164,8 @@ async def test_retrieval_falls_back_when_topic_classification_is_wrong(
     misclassified "How do I apply for OPT?" as "admissions" purely from
     "apply"/"application" word overlap. topic *is* now used as a Qdrant
     filter (app/graph/nodes.py's retrieve node), but only provisionally --
-    a topic-filtered result count below _MIN_TOPIC_FILTERED_RESULTS falls
-    back to an unfiltered search, so this wrong classification still finds
+    a topic-filtered result count below Settings.topic_filter_min_results
+    falls back to an unfiltered search, so this wrong classification still finds
     the real OPT content instead of returning nothing. Uses a stub
     classifier that always returns the wrong topic with high confidence, so
     this doesn't depend on the embedding model's specific behavior staying
@@ -208,7 +208,7 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
 ) -> None:
     """Happy-path counterpart to the fallback test above: when the
     topic-filtered corpus has enough matching content
-    (>= _MIN_TOPIC_FILTERED_RESULTS), the filter is trusted and applied --
+    (>= Settings.topic_filter_min_results), the filter is trusted and applied --
     proven here by seeding an OPT document that shares heavy keyword
     overlap ("practical training", "F-1 students", "work authorization")
     with a CPT query, then asserting it's excluded from citations rather

@@ -4,6 +4,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 
+from app.core.config import get_settings
 from app.core.exceptions import SessionNotFoundError
 from app.core.logging import get_logger
 from app.graph.dependencies import GraphDependencies
@@ -160,17 +161,9 @@ def make_metadata_filter_node() -> Node:
     return metadata_filter
 
 
-# Below this many topic-filtered results, treat the classifier's topic guess
-# as more likely wrong than the corpus actually being that thin, and retry
-# unfiltered rather than surface a false "nothing found." Chosen to be
-# clearly below the reranker's input size (8, see rerank node) -- a
-# genuinely on-topic query should comfortably clear this from a corpus with
-# real per-topic coverage (see test_sources.py's per-topic coverage check).
-_MIN_TOPIC_FILTERED_RESULTS = 3
-
-
 def make_retrieve_node(deps: GraphDependencies) -> Node:
     async def retrieve(state: GraphState) -> dict[str, Any]:
+        settings = get_settings()
         query = _latest_human_message(state)
         topic = state.get("topic")
         student_type = state.get("student_type")
@@ -179,7 +172,10 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
         topic_filter_applied = False
         if topic is not None:
             results = await deps.hybrid_retriever.search(
-                query, limit=20, topic=topic, student_type=student_type
+                query,
+                limit=settings.retrieval_candidate_limit,
+                topic=topic,
+                student_type=student_type,
             )
             topic_filter_applied = True
 
@@ -195,9 +191,18 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
         # of a dead end. student_type stays an unconditional hard filter
         # because it comes from the verified session profile, not a
         # classifier guess.
-        if len(results) < _MIN_TOPIC_FILTERED_RESULTS:
+        #
+        # topic_filter_min_results (Settings, default 3): below this many
+        # topic-filtered results, treat the classifier's topic guess as more
+        # likely wrong than the corpus actually being that thin, and retry
+        # unfiltered rather than surface a false "nothing found." Chosen to
+        # be clearly below the reranker's input size (rerank_top_k, default
+        # 8, see rerank node) -- a genuinely on-topic query should
+        # comfortably clear this from a corpus with real per-topic coverage
+        # (see test_sources.py's per-topic coverage check).
+        if len(results) < settings.topic_filter_min_results:
             fallback_results = await deps.hybrid_retriever.search(
-                query, limit=20, student_type=student_type
+                query, limit=settings.retrieval_candidate_limit, student_type=student_type
             )
             if len(fallback_results) > len(results):
                 results = fallback_results
@@ -225,14 +230,14 @@ def make_reranker_node(deps: GraphDependencies) -> Node:
     async def rerank(state: GraphState) -> dict[str, Any]:
         query = _latest_human_message(state)
         candidates = [(c["content"], c) for c in state.get("retrieved_chunks", [])]
-        # Raised from 5: answers were coming back thin partly because the
-        # model only had 5 chunks of material to work with even after the
-        # prompt was told to be thorough -- 8 gives it enough breadth to
-        # cover multi-part questions (e.g. "what do I need to submit")
-        # without the context growing unreasonably large (Llama 3.3's
-        # context window has plenty of headroom for 8 short-to-medium
-        # chunks).
-        reranked = deps.reranker.rerank(query, candidates, top_k=8)
+        # rerank_top_k (Settings, default 8; raised from 5): answers were
+        # coming back thin partly because the model only had 5 chunks of
+        # material to work with even after the prompt was told to be
+        # thorough -- 8 gives it enough breadth to cover multi-part
+        # questions (e.g. "what do I need to submit") without the context
+        # growing unreasonably large (Llama 3.3's context window has plenty
+        # of headroom for 8 short-to-medium chunks).
+        reranked = deps.reranker.rerank(query, candidates, top_k=get_settings().rerank_top_k)
         return {"reranked_chunks": [{**chunk, "rerank_score": score} for chunk, score in reranked]}
 
     return rerank

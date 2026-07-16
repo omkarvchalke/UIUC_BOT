@@ -2,6 +2,7 @@ import json
 
 from langchain_core.messages import BaseMessage
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.graph.generation import GeneratedAnswer, no_results_answer
 from app.graph.state import RetrievedChunkState
@@ -44,8 +45,13 @@ class GroqAnswerGenerator:
             query=query, context=context, history=history, student_type=student_type
         )
 
+        settings = get_settings()
         try:
-            raw = await self._client.complete_json(messages)
+            raw = await self._client.complete_json(
+                messages,
+                temperature=settings.groq_temperature,
+                max_completion_tokens=settings.groq_max_completion_tokens,
+            )
         except GroqError as exc:
             logger.warning("groq_generation_failed", error=str(exc))
             # citation_indices=[], not the default None: None means "cite

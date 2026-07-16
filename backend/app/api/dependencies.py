@@ -103,10 +103,13 @@ def get_graph_dependencies(
     hybrid_retriever: HybridRetrieverDep,
     answer_generator: AnswerGeneratorDep,
 ) -> GraphDependencies:
+    settings = get_settings()
     return GraphDependencies(
         session_service=session_service,
         hybrid_retriever=hybrid_retriever,
-        topic_classifier=TopicClassifier(),
+        topic_classifier=TopicClassifier(
+            confidence_threshold=settings.topic_classification_confidence_threshold
+        ),
         reranker=CrossEncoderReranker(),
         answer_generator=answer_generator,
     )

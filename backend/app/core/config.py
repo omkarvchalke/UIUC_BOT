@@ -34,6 +34,21 @@ class Settings(BaseSettings):
     chat_rate_limit: str = "20/minute"
     retrieve_rate_limit: str = "30/minute"
 
+    # Pipeline tuning knobs, centralized here so every one is visible in one
+    # place and env-overridable without a code change. Defaults match what
+    # was previously hardcoded at each call site -- see that call site's own
+    # comment for why the value was chosen; this is just where it now lives.
+    chunk_size: int = 1000
+    chunk_overlap: int = 150
+    retrieval_candidate_limit: int = 20
+    rerank_top_k: int = 8
+    topic_filter_min_results: int = 3
+    topic_classification_confidence_threshold: float = 0.55
+    groq_temperature: float = 0.2
+    groq_max_completion_tokens: int = 4096
+    crawl_default_max_depth: int = 4
+    crawl_default_max_pages: int = 60
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

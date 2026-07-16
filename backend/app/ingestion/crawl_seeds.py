@@ -1,3 +1,4 @@
+from app.core.config import get_settings
 from app.ingestion.crawler import CrawlSeed
 from app.models.conversation_session import StudentType
 
@@ -18,8 +19,8 @@ from app.models.conversation_session import StudentType
 # page budget expanding past that wall. Seeding them anyway costs little
 # and means a genuinely public page added to one of them later gets picked
 # up automatically on the next crawl run, with no code change required.
-DEFAULT_MAX_DEPTH = 4
-DEFAULT_MAX_PAGES = 60
+DEFAULT_MAX_DEPTH = get_settings().crawl_default_max_depth
+DEFAULT_MAX_PAGES = get_settings().crawl_default_max_pages
 
 CRAWL_SEEDS: tuple[CrawlSeed, ...] = (
     CrawlSeed(

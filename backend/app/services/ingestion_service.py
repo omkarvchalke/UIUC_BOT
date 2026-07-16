@@ -5,8 +5,9 @@ from typing import Literal
 
 import httpx
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.ingestion.chunking import RecursiveCharacterChunker
+from app.ingestion.chunking import ChunkerConfig, RecursiveCharacterChunker
 from app.ingestion.extracted_document import ExtractedDocument
 from app.ingestion.fetch import FetchError, build_client, fetch_url
 from app.ingestion.html_loader import parse_html
@@ -44,7 +45,13 @@ class IngestionService:
         chunker: RecursiveCharacterChunker | None = None,
     ) -> None:
         self._repository = repository
-        self._chunker = chunker or RecursiveCharacterChunker()
+        if chunker is not None:
+            self._chunker = chunker
+        else:
+            settings = get_settings()
+            self._chunker = RecursiveCharacterChunker(
+                ChunkerConfig(chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap)
+            )
 
     async def ingest_source(
         self, source: SourceConfig, *, http_client: httpx.AsyncClient | None = None
