@@ -86,4 +86,35 @@ CRAWL_SEEDS: tuple[CrawlSeed, ...] = (
         department="University Library",
         max_pages=10,
     ),
+    # Four domains with no prior coverage at all -- no known path structure
+    # to scope path_prefixes to (unlike the admissions/housing/etc. seeds
+    # above, which were narrowed after inspecting the real site), so these
+    # start unrestricted within the domain and rely on max_pages/max_depth
+    # plus the existing content-thinness and soft-404 filters to keep the
+    # result bounded and clean.
+    CrawlSeed(
+        start_url="https://careercenter.illinois.edu",
+        department="The Career Center",
+        max_pages=20,
+    ),
+    CrawlSeed(
+        start_url="https://studentaffairs.illinois.edu",
+        department="Student Affairs",
+        max_pages=20,
+    ),
+    CrawlSeed(
+        start_url="https://union.illinois.edu",
+        department="Illinois Union",
+        max_pages=20,
+    ),
+    # map.illinois.edu deliberately excluded: confirmed via a real crawl to
+    # be a client-side-rendered app (a wayfinding tool) that serves the
+    # exact same ~5000-char static shell HTML for every route regardless of
+    # path -- 10 different URLs crawled all came back byte-identical in
+    # length with the same generic title ("Campus Maps and Building
+    # Information"). Same underlying problem as library.illinois.edu (see
+    # the Content coverage section of README.md), just total rather than
+    # partial: there is no static content here for this pipeline to ever
+    # extract, so unlike library.illinois.edu there's no reason to keep
+    # re-crawling it hoping for something useful.
 )

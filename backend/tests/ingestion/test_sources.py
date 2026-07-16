@@ -7,10 +7,24 @@ def test_manifest_is_not_empty() -> None:
     assert len(SOURCES) > 0
 
 
+# Non-illinois.edu domains explicitly vetted and allowed. Keep this list
+# short and deliberate: the domain check below exists to catch an
+# accidentally-added untrustworthy source, so an addition here should be a
+# real, official authority for something illinois.edu itself doesn't
+# publish -- not a convenience exception.
+_ALLOWED_EXTERNAL_DOMAINS = (
+    # Champaign-Urbana Mass Transit District: the actual authority for bus
+    # fares/routes serving campus; illinois.edu has no equivalent page.
+    "mtd.org",
+)
+
+
 def test_all_urls_are_https_and_on_the_illinois_edu_domain() -> None:
     for source in SOURCES:
         assert source.url.startswith("https://"), source.url
-        assert ".illinois.edu" in source.url, source.url
+        is_illinois_edu = ".illinois.edu" in source.url
+        is_allowed_external = any(domain in source.url for domain in _ALLOWED_EXTERNAL_DOMAINS)
+        assert is_illinois_edu or is_allowed_external, source.url
 
 
 def test_all_urls_are_unique() -> None:

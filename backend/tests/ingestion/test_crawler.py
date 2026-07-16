@@ -228,3 +228,20 @@ async def test_treats_differently_cased_manifest_url_as_a_duplicate() -> None:
 
     assert outcome.accepted == []
     assert outcome.rejected[0][1] == "already in the manifest"
+
+
+async def test_rejects_soft_404_pages() -> None:
+    # Regression test: admissions.illinois.edu returns HTTP 200 with a
+    # custom "Page Not Found" page for a broken link -- fetch_url's
+    # raise_for_status() only catches a real error status code, and the
+    # page's nav-menu chrome is long enough to clear MIN_CONTENT_CHARS, so
+    # it was getting ingested as if it were real content.
+    pages = {"/apply/nondegree": _page("Page Not Found, Illinois Admissions", _SUBSTANTIAL_TEXT)}
+    seed = CrawlSeed(
+        start_url="https://example.illinois.edu/apply/nondegree", department="Test Dept"
+    )
+    async with httpx.AsyncClient(transport=_site(pages)) as client:
+        outcome = await _crawler().crawl((seed,), client=client)
+
+    assert outcome.accepted == []
+    assert outcome.rejected[0][1] == "looks like a soft-404 error page"

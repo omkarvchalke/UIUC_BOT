@@ -286,4 +286,63 @@ SOURCES: tuple[SourceConfig, ...] = (
         fallback_title="International Student and Scholar Services",
         student_types=(StudentType.INTERNATIONAL,),
     ),
+    # The following 6 were checked individually via WebFetch against a
+    # larger candidate list (~20 URLs from a hand-compiled domain list) --
+    # most of that list turned out to be thin nav hubs, login-gated portals
+    # (identity/canvas/app/handshake.illinois.edu), a JSON API response
+    # (app.illinois.edu), or dead links; only these had real substantive
+    # content worth adding.
+    SourceConfig(
+        url="https://housing.illinois.edu/Apply/New-Resident/How-To-Apply",
+        department="University Housing",
+        topic=Topic.HOUSING,
+        source_type=SourceType.HTML,
+        fallback_title="New Resident: How to Apply",
+    ),
+    SourceConfig(
+        url="https://housing.illinois.edu/MyHousing/Move-In",
+        department="University Housing",
+        topic=Topic.HOUSING,
+        source_type=SourceType.HTML,
+        fallback_title="Fall Move-In",
+    ),
+    SourceConfig(
+        url="https://www.osfa.illinois.edu/",
+        department="Office of Student Financial Aid",
+        topic=Topic.FINANCIAL_AID,
+        source_type=SourceType.HTML,
+        fallback_title="Office of Student Financial Aid",
+    ),
+    SourceConfig(
+        url="https://counselingcenter.illinois.edu/",
+        department="Counseling Center",
+        # No dedicated "mental health" topic exists in this enum; HEALTH_INSURANCE
+        # is the closest fit and already covers McKinley Health Center's
+        # health-service content for the same reason.
+        topic=Topic.HEALTH_INSURANCE,
+        source_type=SourceType.HTML,
+        fallback_title="Counseling Center",
+    ),
+    SourceConfig(
+        url="https://fs.illinois.edu/campus-maps-and-building-information/",
+        department="Facilities & Services",
+        # Closest available fit: the page's real content is about GIS/digital
+        # mapping infrastructure, not a topic this enum has a dedicated
+        # bucket for.
+        topic=Topic.TECHNOLOGY_SERVICES,
+        source_type=SourceType.HTML,
+        fallback_title="Campus Maps and Building Information",
+    ),
+    SourceConfig(
+        # Not an illinois.edu domain -- the official Champaign-Urbana Mass
+        # Transit District site, which is the actual authority for bus fares
+        # and routes serving campus (illinois.edu has no equivalent page of
+        # its own). See the domain-safety test in test_sources.py for the
+        # explicit allowlist this requires.
+        url="https://mtd.org/",
+        department="Champaign-Urbana Mass Transit District (MTD)",
+        topic=Topic.TRANSPORTATION,
+        source_type=SourceType.HTML,
+        fallback_title="Champaign-Urbana Mass Transit District",
+    ),
 )

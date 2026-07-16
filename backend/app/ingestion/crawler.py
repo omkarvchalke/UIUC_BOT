@@ -115,6 +115,22 @@ def _extract_links(html: str, *, base_url: str) -> set[str]:
     return links
 
 
+_ERROR_PAGE_TITLE_MARKERS = ("page not found", "404 error", "not found")
+
+
+def _looks_like_error_page(title: str) -> bool:
+    # Several sites in this manifest return HTTP 200 with a custom "Page
+    # Not Found" page instead of a real 404 status for a broken link (seen
+    # on admissions.illinois.edu) -- fetch_url's raise_for_status() only
+    # catches an actual error status code, so a soft-404 like this sails
+    # through and, since it's mostly nav-menu chrome, is long enough to
+    # clear MIN_CONTENT_CHARS too. Checked on title rather than body text:
+    # the body is dominated by the same nav-menu content real pages share,
+    # but the <title>/<h1> reliably says "Page Not Found" on a soft-404.
+    lowered = title.lower()
+    return any(marker in lowered for marker in _ERROR_PAGE_TITLE_MARKERS)
+
+
 def _infer_student_types(
     url: str, title: str, default: tuple[StudentType, ...]
 ) -> tuple[StudentType, ...]:
@@ -217,6 +233,8 @@ class Crawler:
 
             if url in self._existing_urls:
                 rejected.append((url, "already in the manifest"))
+            elif _looks_like_error_page(extracted.title):
+                rejected.append((url, "looks like a soft-404 error page"))
             elif len(extracted.text) < self._min_chars:
                 rejected.append((url, f"too thin ({len(extracted.text)} chars)"))
             else:
