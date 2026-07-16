@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup, Tag
 from app.core.logging import get_logger
 from app.embeddings.embedder import Embedder
 from app.ingestion.canonical import normalize_url
+from app.ingestion.crawl_seed import CrawlSeed
 from app.ingestion.fetch import FetchError, build_client, fetch_response
 from app.ingestion.html_loader import parse_html
 from app.ingestion.robots import RobotsChecker
@@ -18,6 +19,8 @@ from app.ingestion.sources import SOURCES, SourceConfig
 from app.models.conversation_session import StudentType
 from app.models.document import SourceType
 from app.retrieval.topic_classifier import TopicClassification, TopicClassifier
+
+__all__ = ["Crawler", "CrawlOutcome", "CrawlSeed", "TopicClassifierLike"]
 
 
 class TopicClassifierLike(Protocol):
@@ -95,25 +98,6 @@ _STUDENT_TYPE_KEYWORDS: tuple[tuple[str, StudentType], ...] = (
     ("freshman", StudentType.FRESHMAN),
     ("first-year", StudentType.FRESHMAN),
 )
-
-
-@dataclass(frozen=True)
-class CrawlSeed:
-    """One starting point for the crawler: a site section to explore.
-
-    Bounded deliberately -- path_prefixes keeps the crawl inside the
-    relevant section of a site (e.g. admissions.illinois.edu/apply/*, not
-    its news or staff-directory pages), and max_depth/max_pages cap how far
-    a single seed can spread even if the section turns out to be larger
-    than expected.
-    """
-
-    start_url: str
-    department: str
-    path_prefixes: tuple[str, ...] = field(default_factory=tuple)
-    default_student_types: tuple[StudentType, ...] = field(default_factory=tuple)
-    max_depth: int = 2
-    max_pages: int = 25
 
 
 @dataclass(frozen=True)
