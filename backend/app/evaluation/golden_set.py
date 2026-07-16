@@ -26,6 +26,15 @@ class EvalCase:
     # vague pointer back to the source website is technically "supported"
     # by the citation even though it isn't a real answer.
     forbidden_phrases: tuple[str, ...] = field(default_factory=tuple)
+    # Retrieval ground truth for Precision@5/Recall@5/MRR/Context Precision
+    # (app/evaluation/retrieval_metrics.py). Empty tuple (the default) means
+    # "no retrieval ground truth for this case" -- it's skipped in retrieval-
+    # metric aggregation, same as min_citations=0/forbidden_phrases=() are
+    # already legitimately empty for many cases (a clarification-triggering
+    # case has no "correct retrieved document" to check). Only populated
+    # when a specific case's own comments already establish the one correct
+    # source page -- never guessed from the source manifest alone.
+    expected_relevant_urls: tuple[str, ...] = field(default_factory=tuple)
 
 
 _VAGUE_POINTER_PHRASES = (
@@ -45,6 +54,7 @@ GOLDEN_SET: tuple[EvalCase, ...] = (
         expect_grounded=True,
         min_citations=1,
         forbidden_phrases=_VAGUE_POINTER_PHRASES,
+        expected_relevant_urls=("https://www.admissions.illinois.edu/Apply/Freshman/process",),
     ),
     EvalCase(
         # Not "what GPA do I need" -- the freshman requirements page
@@ -59,6 +69,7 @@ GOLDEN_SET: tuple[EvalCase, ...] = (
         student_type=StudentType.FRESHMAN,
         expect_grounded=True,
         min_citations=1,
+        expected_relevant_urls=("https://www.admissions.illinois.edu/apply/freshman/requirements",),
     ),
     EvalCase(
         name="freshman_housing",
@@ -165,6 +176,7 @@ GOLDEN_SET: tuple[EvalCase, ...] = (
         student_type=StudentType.FRESHMAN,
         expect_grounded=True,
         min_citations=1,
+        expected_relevant_urls=("https://parking.illinois.edu/permits",),
     ),
     EvalCase(
         # student_type is FRESHMAN purely to get past the first-turn
@@ -180,7 +192,10 @@ GOLDEN_SET: tuple[EvalCase, ...] = (
         # both are defensible, so asserting a specific count would be
         # testing model style, not correctness). What's model-independent
         # is that this is an unambiguous, on-topic question, so it should
-        # never trigger a clarification.
+        # never trigger a clarification. For the same reason,
+        # expected_relevant_urls is deliberately left empty too -- there's
+        # no source that actually answers this, so no "correct" retrieval
+        # target exists to check against.
         name="library_hours",
         message="What are the library hours?",
         student_type=StudentType.FRESHMAN,

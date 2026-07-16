@@ -32,3 +32,15 @@ def test_every_student_type_is_covered() -> None:
     covered = {case.student_type for case in GOLDEN_SET}
     missing = set(StudentType) - covered
     assert not missing, f"StudentTypes with no golden case: {missing}"
+
+
+def test_expected_relevant_urls_look_like_real_urls() -> None:
+    for case in GOLDEN_SET:
+        for url in case.expected_relevant_urls:
+            assert url.startswith("https://"), f"{case.name}: {url!r} doesn't look like a URL"
+
+
+def test_expected_relevant_urls_has_no_duplicates_within_a_case() -> None:
+    for case in GOLDEN_SET:
+        urls = case.expected_relevant_urls
+        assert len(urls) == len(set(urls)), f"{case.name} has duplicate expected_relevant_urls"

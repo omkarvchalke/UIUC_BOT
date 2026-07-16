@@ -1,4 +1,5 @@
 import asyncio
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,6 +17,8 @@ class EvalResult:
     grounded: bool
     needs_clarification: bool
     citation_count: int
+    citation_urls: list[str]
+    latency_ms: float
 
 
 async def _create_session(client: httpx.AsyncClient, case: EvalCase) -> str:
@@ -52,9 +55,11 @@ def _check(case: EvalCase, body: dict[str, Any]) -> list[str]:
 
 async def run_case(client: httpx.AsyncClient, case: EvalCase) -> EvalResult:
     session_id = await _create_session(client, case)
+    start = time.perf_counter()
     response = await client.post(
         "/api/v1/chat", json={"session_id": session_id, "message": case.message}
     )
+    latency_ms = (time.perf_counter() - start) * 1000
     response.raise_for_status()
     body = response.json()
 
@@ -67,6 +72,8 @@ async def run_case(client: httpx.AsyncClient, case: EvalCase) -> EvalResult:
         grounded=body["grounded"],
         needs_clarification=body["needs_clarification"],
         citation_count=len(body["citations"]),
+        citation_urls=[citation["url"] for citation in body["citations"]],
+        latency_ms=latency_ms,
     )
 
 
