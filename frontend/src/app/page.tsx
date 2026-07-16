@@ -37,8 +37,12 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <span className="text-lg font-semibold tracking-tight">IlliniGuide AI</span>
+      <div className="from-il-orange via-il-orange to-il-blue h-1 shrink-0 bg-gradient-to-r" />
+      <header className="bg-background/80 sticky top-0 z-10 flex items-center justify-between border-b px-4 py-3 backdrop-blur">
+        <span className="font-heading flex items-baseline gap-0.5 text-lg font-bold tracking-tight">
+          Illini<span className="text-primary">Guide</span>
+          <span className="text-muted-foreground ml-1 text-xs font-medium tracking-wide">AI</span>
+        </span>
         <div className="flex items-center gap-1">
           {sessionId && (
             <Button
@@ -75,7 +79,7 @@ export default function ChatPage() {
               {messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-6 px-4 text-center">
                   <div className="space-y-1.5">
-                    <h2 className="text-xl font-semibold tracking-tight">
+                    <h2 className="font-heading text-xl font-bold tracking-tight">
                       What can I help you with?
                     </h2>
                     <p className="text-muted-foreground text-sm">

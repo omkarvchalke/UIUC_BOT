@@ -37,7 +37,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         type="submit"
         size="icon"
         disabled={disabled || !value.trim()}
-        className="h-11 w-11 shrink-0 rounded-full"
+        className="shadow-primary/30 h-11 w-11 shrink-0 rounded-full shadow-lg disabled:shadow-none"
         aria-label="Send message"
       >
         <ArrowUp className="h-4 w-4" />

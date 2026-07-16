@@ -49,7 +49,9 @@ export function StudentTypeSelector({ onSelect, isLoading }: StudentTypeSelector
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-6 px-4 text-center">
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome to IlliniGuide AI</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-3xl">
+          Welcome to <span className="text-primary">IlliniGuide</span> AI
+        </h1>
         <p className="text-muted-foreground text-sm leading-6">
           Answers about admissions, housing, financial aid, and more — grounded only in official
           UIUC sources. We never ask for your name, NetID, or any personal information.
@@ -67,9 +69,11 @@ export function StudentTypeSelector({ onSelect, isLoading }: StudentTypeSelector
               type="button"
               disabled={isLoading}
               onClick={() => onSelect(value)}
-              className="border-input hover:border-primary hover:bg-accent flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors disabled:pointer-events-none disabled:opacity-50"
+              className="border-input hover:border-primary hover:bg-accent flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:pointer-events-none disabled:opacity-50"
             >
-              <Icon className="text-primary h-4 w-4" />
+              <span className="bg-accent flex h-7 w-7 items-center justify-center rounded-full">
+                <Icon className="text-primary h-4 w-4" />
+              </span>
               <span className="text-sm font-medium">{label}</span>
               <span className="text-muted-foreground text-xs">{description}</span>
             </button>

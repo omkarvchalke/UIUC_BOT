@@ -4,7 +4,7 @@ export function TypingIndicator() {
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="bg-muted-foreground/60 h-1.5 w-1.5 animate-bounce rounded-full"
+          className="bg-primary h-1.5 w-1.5 animate-bounce rounded-full"
           style={{ animationDelay: `${i * 0.15}s` }}
         />
       ))}
