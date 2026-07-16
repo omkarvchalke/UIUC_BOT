@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+from app.ingestion.extracted_document import Section
 from app.ingestion.html_loader import parse_html
 
 _BASE_URL = "https://example.illinois.edu/page"
@@ -93,3 +94,79 @@ def test_resolves_relative_canonical_link_against_base_url() -> None:
 def test_no_canonical_link_returns_none() -> None:
     result = parse_html(_SAMPLE_HTML, base_url=_BASE_URL)
     assert result.canonical_url is None
+
+
+def test_extracts_single_section_under_one_heading() -> None:
+    html = "<html><body><h1>Registration</h1><p>How to register for classes.</p></body></html>"
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections == (
+        Section(heading_path=("Registration",), text="How to register for classes."),
+    )
+
+
+def test_nested_headings_stack_into_heading_path() -> None:
+    html = (
+        "<html><body>"
+        "<h1>Registration</h1><p>Overview text.</p>"
+        "<h2>Holds</h2><p>Holds text.</p>"
+        "<h3>Financial Holds</h3><p>Financial holds text.</p>"
+        "</body></html>"
+    )
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections == (
+        Section(heading_path=("Registration",), text="Overview text."),
+        Section(heading_path=("Registration", "Holds"), text="Holds text."),
+        Section(
+            heading_path=("Registration", "Holds", "Financial Holds"),
+            text="Financial holds text.",
+        ),
+    )
+
+
+def test_heading_level_jump_pops_stack_correctly() -> None:
+    # h1 -> h3 directly (skipping h2): the stack should still pop down to
+    # "shallower than 3" (i.e. drop nothing, since h1 < h3) and push h3 on
+    # top of h1, not silently drop the h1 ancestor.
+    html = (
+        "<html><body>"
+        "<h1>Registration</h1><p>Overview.</p>"
+        "<h3>Financial Holds</h3><p>Details.</p>"
+        "</body></html>"
+    )
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections == (
+        Section(heading_path=("Registration",), text="Overview."),
+        Section(heading_path=("Registration", "Financial Holds"), text="Details."),
+    )
+
+
+def test_content_before_first_heading_has_empty_heading_path() -> None:
+    html = "<html><body><p>Lead-in text.</p><h1>Registration</h1><p>Body.</p></body></html>"
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections[0] == Section(heading_path=(), text="Lead-in text.")
+
+
+def test_inline_markup_inside_heading_does_not_leak_into_following_section() -> None:
+    html = "<html><body><h2><span>A</span> Financial Holds</h2><p>Body text.</p></body></html>"
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections == (Section(heading_path=("A Financial Holds",), text="Body text."),)
+
+
+def test_empty_heading_tag_does_not_push_onto_stack() -> None:
+    html = "<html><body><h1></h1><p>Body under no real heading.</p></body></html>"
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections == (Section(heading_path=(), text="Body under no real heading."),)
+
+
+def test_page_with_no_headings_yields_single_section() -> None:
+    html = "<html><body><p>Just body text, no headings at all.</p></body></html>"
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections == (
+        Section(heading_path=(), text="Just body text, no headings at all."),
+    )
+
+
+def test_flat_text_field_is_unaffected_by_sections() -> None:
+    result = parse_html(_SAMPLE_HTML, base_url=_BASE_URL)
+    assert "required to live in university housing" in result.text
+    assert result.sections is not None and len(result.sections) > 0

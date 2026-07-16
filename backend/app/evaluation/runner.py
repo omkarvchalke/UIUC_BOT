@@ -35,13 +35,9 @@ def _check(case: EvalCase, body: dict[str, Any]) -> list[str]:
 
     if case.expect_grounded is not None and grounded != case.expect_grounded:
         failures.append(f"expected grounded={case.expect_grounded}, got {grounded}")
-    if (
-        case.expect_clarification is not None
-        and needs_clarification != case.expect_clarification
-    ):
+    if case.expect_clarification is not None and needs_clarification != case.expect_clarification:
         failures.append(
-            f"expected needs_clarification={case.expect_clarification}, "
-            f"got {needs_clarification}"
+            f"expected needs_clarification={case.expect_clarification}, got {needs_clarification}"
         )
     if len(citations) < case.min_citations:
         failures.append(f"expected >= {case.min_citations} citations, got {len(citations)}")

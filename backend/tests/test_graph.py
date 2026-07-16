@@ -8,6 +8,7 @@ from app.graph.dependencies import GraphDependencies
 from app.graph.generation import ExtractiveAnswerGenerator
 from app.graph.graph import build_graph, config_for, turn_input
 from app.graph.state import GraphState
+from app.ingestion.chunking import ChunkResult
 from app.models.conversation_session import StudentType
 from app.models.document import SourceType, Topic
 from app.repositories.document_repository import DocumentRepository
@@ -63,7 +64,7 @@ async def _seed_and_index(
         last_updated=None,
         content_hash=f"hash-{url}",
     )
-    await repository.replace_chunks(document.id, chunk_texts)
+    await repository.replace_chunks(document.id, [ChunkResult(text=t) for t in chunk_texts])
     loaded = await repository.get_by_id(document.id)
     assert loaded is not None
     await IndexingService(repository, vector_repository).index_document(loaded)

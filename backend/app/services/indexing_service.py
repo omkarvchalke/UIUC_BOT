@@ -54,14 +54,10 @@ class IndexingService:
 
         if not document.chunks:
             logger.warning("indexing_no_chunks", url=document.url)
-            return IndexResult(
-                document.id, document.url, "failed", error="document has no chunks"
-            )
+            return IndexResult(document.id, document.url, "failed", error="document has no chunks")
 
         try:
-            vectors = self._embedder.embed_documents(
-                [chunk.content for chunk in document.chunks]
-            )
+            vectors = self._embedder.embed_documents([chunk.content for chunk in document.chunks])
         except Exception as exc:  # noqa: BLE001 - one bad document must not abort the batch
             logger.warning("indexing_embed_failed", url=document.url, error=str(exc))
             return IndexResult(document.id, document.url, "failed", error=str(exc))
@@ -87,6 +83,11 @@ class IndexingService:
                     "topic": document.topic.value,
                     "source_type": document.source_type.value,
                     "student_types": [st.value for st in document.student_types],
+                    "audience": [a.value for a in document.audience],
+                    "document_type": (
+                        document.document_type.value if document.document_type else None
+                    ),
+                    "subtopic": chunk.subtopic,
                     "last_updated": (
                         document.last_updated.isoformat() if document.last_updated else None
                     ),

@@ -54,9 +54,7 @@ def build_graph(
     _add_node(builder, "load_session", nodes.make_load_session_node(deps))
     _add_node(builder, "check_student_profile", nodes.make_check_student_profile_node())
     _add_node(builder, "intent_detection", nodes.make_intent_detection_node())
-    _add_node(
-        builder, "question_classification", nodes.make_question_classification_node(deps)
-    )
+    _add_node(builder, "question_classification", nodes.make_question_classification_node(deps))
     _add_node(builder, "clarification", nodes.make_clarification_node())
     _add_node(builder, "metadata_filter", nodes.make_metadata_filter_node())
     _add_node(builder, "retrieve", nodes.make_retrieve_node(deps))

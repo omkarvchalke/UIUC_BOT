@@ -40,10 +40,19 @@ class Settings(BaseSettings):
     # comment for why the value was chosen; this is just where it now lives.
     chunk_size: int = 1000
     chunk_overlap: int = 150
+    # Sections shorter than this (post <link>/nav-tag stripping) get merged
+    # into a neighboring section rather than becoming their own tiny,
+    # low-value chunk -- see app/ingestion/semantic_chunker.py.
+    semantic_chunk_min_section_chars: int = 200
     retrieval_candidate_limit: int = 20
     rerank_top_k: int = 8
     topic_filter_min_results: int = 3
     topic_classification_confidence_threshold: float = 0.55
+    # Standard constant from the original RRF paper (Cormack, Clarke &
+    # Buettcher 2009) -- large enough that rank differences among top
+    # results still matter, small enough that being ranked at all (even
+    # far down one retriever's list) counts for something.
+    rrf_k: int = 60
     groq_temperature: float = 0.2
     groq_max_completion_tokens: int = 4096
     crawl_default_max_depth: int = 4

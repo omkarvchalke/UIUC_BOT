@@ -9,6 +9,15 @@ class ChunkerConfig:
     chunk_overlap: int = 150
 
 
+@dataclass(frozen=True)
+class ChunkResult:
+    """One persisted chunk: its text plus the heading-derived section it
+    came from, if any (see app/ingestion/semantic_chunker.py)."""
+
+    text: str
+    subtopic: str | None = None
+
+
 class RecursiveCharacterChunker:
     """Splits text into overlapping chunks, preferring paragraph/sentence/word
     boundaries over hard character cuts.

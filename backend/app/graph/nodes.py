@@ -156,6 +156,15 @@ def make_metadata_filter_node() -> Node:
         # exactly as the retrieve node needs them. Kept as its own node so
         # any future filter rule has an obvious home separate from the
         # retrieval call itself.
+        #
+        # HybridRetriever/VectorRepository also accept audience/document_type
+        # filters now (see app/retrieval/hybrid_search.py), but there's no
+        # user-facing signal for audience today -- only student_type is
+        # collected (via the frontend's StudentTypeSelector). This node stays
+        # a no-op rather than guessing audience from topic/message text.
+        # Wiring a real signal through, once one exists, is a one-line
+        # addition to retrieve's search(...) call below -- no retrieval-stack
+        # changes needed at that point.
         return {}
 
     return metadata_filter

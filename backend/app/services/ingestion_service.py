@@ -8,7 +8,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.ingestion.chunking import ChunkerConfig, RecursiveCharacterChunker
+from app.ingestion.chunking import ChunkerConfig
 from app.ingestion.extracted_document import ExtractedDocument
 from app.ingestion.fetch import FetchError, build_client, fetch_response, fetch_url
 from app.ingestion.html_loader import parse_html
@@ -16,8 +16,9 @@ from app.ingestion.metadata.audience import infer_audience
 from app.ingestion.metadata.document_type import classify_document_type
 from app.ingestion.metadata.keywords import extract_keywords
 from app.ingestion.pdf_loader import parse_pdf
+from app.ingestion.semantic_chunker import SemanticChunker
 from app.ingestion.sources import SOURCES, SourceConfig
-from app.models.document import SourceType
+from app.models.document import Document, SourceType
 from app.repositories.document_repository import DocumentRepository
 
 logger = get_logger(__name__)
@@ -46,14 +47,14 @@ class IngestionService:
         self,
         repository: DocumentRepository,
         *,
-        chunker: RecursiveCharacterChunker | None = None,
+        chunker: SemanticChunker | None = None,
     ) -> None:
         self._repository = repository
         if chunker is not None:
             self._chunker = chunker
         else:
             settings = get_settings()
-            self._chunker = RecursiveCharacterChunker(
+            self._chunker = SemanticChunker(
                 ChunkerConfig(chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap)
             )
 
@@ -140,14 +141,17 @@ class IngestionService:
             content_hash=content_hash,
         )
 
-        chunks = self._chunker.split(extracted.text)
-        await self._repository.replace_chunks(document.id, chunks)
+        chunk_results = self._chunker.split(extracted)
+        await self._repository.replace_chunks(document.id, chunk_results)
 
         status: IngestStatus = "updated" if existing is not None else "created"
         logger.info(
-            "ingestion_source_ingested", url=source.url, status=status, chunk_count=len(chunks)
+            "ingestion_source_ingested",
+            url=source.url,
+            status=status,
+            chunk_count=len(chunk_results),
         )
-        return IngestResult(url=source.url, status=status, chunk_count=len(chunks))
+        return IngestResult(url=source.url, status=status, chunk_count=len(chunk_results))
 
     async def ingest_all(
         self, sources: Iterable[SourceConfig] = SOURCES, *, incremental: bool = False
@@ -159,6 +163,41 @@ class IngestionService:
                     await self.ingest_source(source, http_client=client, incremental=incremental)
                 )
         return results
+
+    async def rechunk_document(
+        self, document: Document, *, http_client: httpx.AsyncClient | None = None
+    ) -> IngestResult:
+        """Re-fetches document.url, re-parses, and replaces its chunks with
+        fresh SemanticChunker output -- without touching Document metadata
+        (title/topic/audience/content_hash/etc). Used only by
+        scripts/backfill_semantic_chunks.py: existing chunks predate this
+        phase's heading-aware chunker and were never re-chunked by a normal
+        content-unchanged re-ingestion run (ingest_source above skips
+        chunking entirely when content_hash matches)."""
+        source = SourceConfig(
+            url=document.url,
+            department=document.department,
+            topic=document.topic,
+            source_type=document.source_type,
+            fallback_title=document.title,
+            student_types=tuple(document.student_types),
+        )
+        try:
+            raw_bytes = await fetch_url(source.url, client=http_client)
+        except FetchError as exc:
+            logger.warning("rechunk_fetch_failed", url=source.url, error=str(exc))
+            return IngestResult(url=source.url, status="failed", error=str(exc))
+
+        try:
+            extracted = self._parse(source, raw_bytes)
+        except Exception as exc:  # noqa: BLE001 - one bad document must not abort the batch
+            logger.warning("rechunk_parse_failed", url=source.url, error=str(exc))
+            return IngestResult(url=source.url, status="failed", error=str(exc))
+
+        chunk_results = self._chunker.split(extracted)
+        await self._repository.replace_chunks(document.id, chunk_results)
+        logger.info("rechunk_document_rechunked", url=source.url, chunk_count=len(chunk_results))
+        return IngestResult(url=source.url, status="updated", chunk_count=len(chunk_results))
 
     @staticmethod
     def _parse(source: SourceConfig, raw_bytes: bytes) -> ExtractedDocument:

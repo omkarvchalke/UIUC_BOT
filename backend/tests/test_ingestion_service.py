@@ -306,6 +306,57 @@ async def test_ingest_source_handles_pdf_sources(
         assert document.source_type is SourceType.PDF
 
 
+async def test_ingest_source_populates_distinct_subtopics_from_headings(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # Each section body is repeated well past the production default
+    # semantic_chunk_min_section_chars (200) so the two <h2> sections stay
+    # distinct chunks instead of merging forward into one another.
+    holds_text = "Registration holds must be resolved before you can register. " * 5
+    add_drop_text = "The add/drop deadline is the tenth day of the semester. " * 5
+    html = (
+        "<html><head><title>Registration</title></head><body>"
+        "<h1>Registration</h1><p>General registration overview text here.</p>"
+        f"<h2>Holds</h2><p>{holds_text}</p>"
+        f"<h2>Add/Drop</h2><p>{add_drop_text}</p>"
+        "</body></html>"
+    )
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+
+        async with _mock_client(html.encode()) as client:
+            result = await service.ingest_source(_source(), http_client=client)
+
+        assert result.status == "created"
+        document = await _get_with_chunks(repository, _source().url)
+        subtopics = {chunk.subtopic for chunk in document.chunks}
+        assert "Registration > Holds" in subtopics
+        assert "Registration > Add/Drop" in subtopics
+
+
+async def test_ingest_source_pdf_chunks_have_no_subtopic(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+        pdf_bytes = make_pdf_bytes(
+            "International students must complete SEVIS check-in.", title="I-20 Guide"
+        )
+
+        async with _mock_client(pdf_bytes) as client:
+            result = await service.ingest_source(
+                _source(url="https://example.illinois.edu/i20-2.pdf", source_type=SourceType.PDF),
+                http_client=client,
+            )
+
+        assert result.status == "created"
+        document = await _get_with_chunks(repository, "https://example.illinois.edu/i20-2.pdf")
+        assert len(document.chunks) >= 1
+        assert all(chunk.subtopic is None for chunk in document.chunks)
+
+
 async def test_ingest_source_returns_failed_status_on_fetch_error(
     db_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:

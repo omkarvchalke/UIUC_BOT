@@ -1,13 +1,15 @@
 from datetime import datetime
 
 from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString
 
 from app.ingestion.canonical import extract_canonical_link
 from app.ingestion.cleaning import clean_text
-from app.ingestion.extracted_document import ExtractedDocument
+from app.ingestion.extracted_document import ExtractedDocument, Section
 from app.ingestion.timestamps import ensure_utc
 
 _NOISE_TAGS = ("script", "style", "nav", "footer", "header", "noscript", "svg", "form")
+_HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 _LAST_UPDATED_META_NAMES = ("last-modified", "revised", "date", "dcterms.modified")
 _LAST_UPDATED_META_PROPERTIES = ("article:modified_time", "article:published_time")
 
@@ -31,10 +33,65 @@ def parse_html(html: str, *, base_url: str, fallback_title: str = "Untitled") ->
     title = _extract_title(soup) or fallback_title
     text = clean_text(soup.get_text(separator="\n"))
     last_updated = ensure_utc(_extract_last_updated(soup))
+    sections = _extract_sections(soup)
 
     return ExtractedDocument(
-        title=title, text=text, last_updated=last_updated, canonical_url=canonical_url
+        title=title,
+        text=text,
+        last_updated=last_updated,
+        canonical_url=canonical_url,
+        sections=sections,
     )
+
+
+def _extract_sections(soup: BeautifulSoup) -> tuple[Section, ...]:
+    """DOM-order walk that segments body content at heading boundaries.
+
+    Walks `.descendants` (not `.find_all()` per content tag) so every text
+    node is captured exactly once regardless of nesting depth -- the same
+    guarantee `get_text()` gives the flat `.text` field, just partitioned
+    by heading instead of flattened. A text node whose nearest tag
+    ancestor is a heading is skipped from body text since it's already
+    captured as that heading's own title (via find_parent, not `.parent`,
+    since a heading can contain inline markup like `<h2><span>A</span>
+    B</h2>`).
+    """
+    sections: list[Section] = []
+    heading_stack: list[tuple[int, str]] = []
+    current_lines: list[str] = []
+
+    def flush() -> None:
+        text = clean_text("\n".join(current_lines))
+        if text:
+            sections.append(Section(heading_path=tuple(h for _, h in heading_stack), text=text))
+        current_lines.clear()
+
+    root = soup.body or soup
+    for node in root.descendants:
+        if isinstance(node, Tag) and node.name in _HEADING_TAGS:
+            flush()
+            level = int(node.name[1])
+            while heading_stack and heading_stack[-1][0] >= level:
+                heading_stack.pop()
+            # Separator " ", not the default "": a heading with inline
+            # markup (e.g. <h2><span>A</span> Financial Holds</h2>) has two
+            # text nodes ("A", " Financial Holds") that get_text(strip=True)
+            # would each strip individually and then concatenate with no
+            # separator ("AFinancial Holds") -- confirmed via a failing test.
+            heading_text = node.get_text(" ", strip=True)
+            if heading_text:
+                heading_stack.append((level, heading_text))
+            continue
+
+        if isinstance(node, NavigableString):
+            if node.find_parent(_HEADING_TAGS) is not None:
+                continue
+            text = str(node).strip()
+            if text:
+                current_lines.append(text)
+
+    flush()
+    return tuple(sections)
 
 
 def _extract_title(soup: BeautifulSoup) -> str | None:

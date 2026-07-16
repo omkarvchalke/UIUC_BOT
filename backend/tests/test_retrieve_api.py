@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.api.retrieve as retrieve_module
 from app.core.config import Settings
+from app.ingestion.chunking import ChunkResult
 from app.main import app
 from app.models.document import SourceType, Topic
 from app.repositories.document_repository import DocumentRepository
@@ -29,7 +30,13 @@ async def _seed_and_index(
             content_hash="hash-parking",
         )
         await repository.replace_chunks(
-            document.id, ["Students may purchase a parking permit through the Parking Department."]
+            document.id,
+            [
+                ChunkResult(
+                    text="Students may purchase a parking permit through the Parking Department.",
+                    subtopic="Permits",
+                )
+            ],
         )
         loaded_document = await repository.get_by_id(document.id)
         assert loaded_document is not None
@@ -50,6 +57,7 @@ async def test_retrieve_endpoint_returns_ranked_results(
     assert len(body["results"]) >= 1
     assert "parking permit" in body["results"][0]["content"]
     assert body["results"][0]["fused_score"] > 0
+    assert body["results"][0]["subtopic"] == "Permits"
 
 
 async def test_retrieve_endpoint_requires_query_param() -> None:
@@ -71,6 +79,24 @@ async def test_retrieve_endpoint_respects_topic_filter(
 
     assert response.status_code == 200
     assert response.json()["results"] == []
+
+
+async def test_retrieve_endpoint_respects_audience_and_document_type_filters(
+    db_session_factory: async_sessionmaker[AsyncSession], test_vector_repository: VectorRepository
+) -> None:
+    await _seed_and_index(db_session_factory, test_vector_repository)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            "/api/v1/retrieve",
+            params={"query": "parking permit", "audience": "alumni", "document_type": "faq"},
+        )
+
+    # The seeded document has no audience/document_type set, so it doesn't
+    # match either explicit filter -- this only proves the query params are
+    # accepted and threaded through, not a specific filtering outcome
+    # (that's covered by the retriever/repository-level tests).
+    assert response.status_code == 200
 
 
 async def test_retrieve_rate_limit_holds_under_real_concurrency(

@@ -75,8 +75,6 @@ def test_every_student_type_has_admissions_coverage() -> None:
     admissions_sources = [s for s in SOURCES if s.topic is Topic.ADMISSIONS]
     for student_type in StudentType:
         applies = [
-            s
-            for s in admissions_sources
-            if not s.student_types or student_type in s.student_types
+            s for s in admissions_sources if not s.student_types or student_type in s.student_types
         ]
         assert applies, f"No admissions source applies to {student_type}"

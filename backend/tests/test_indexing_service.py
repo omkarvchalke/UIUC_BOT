@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.embeddings.embedder import Embedder
+from app.ingestion.chunking import ChunkResult
 from app.models.conversation_session import StudentType
 from app.models.document import Document, SourceType, Topic
 from app.repositories.document_repository import DocumentRepository
@@ -22,7 +23,7 @@ async def _seed_document(
         last_updated=None,
         content_hash="hash-v1",
     )
-    await repository.replace_chunks(document.id, chunk_texts)
+    await repository.replace_chunks(document.id, [ChunkResult(text=t) for t in chunk_texts])
     return await repository.get_by_id(document.id)
 
 

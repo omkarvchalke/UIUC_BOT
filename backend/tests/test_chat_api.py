@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.api.chat as chat_module
 from app.core.config import Settings
+from app.ingestion.chunking import ChunkResult
 from app.main import app
 from app.models.conversation_session import StudentType
 from app.models.document import SourceType, Topic
@@ -46,7 +47,7 @@ async def _seed_and_index(
             last_updated=None,
             content_hash=f"hash-{url}",
         )
-        await repository.replace_chunks(document.id, chunk_texts)
+        await repository.replace_chunks(document.id, [ChunkResult(text=t) for t in chunk_texts])
         loaded = await repository.get_by_id(document.id)
         assert loaded is not None
         await IndexingService(repository, vector_repository).index_document(loaded)

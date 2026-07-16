@@ -15,6 +15,7 @@ class RetrievedChunkResponse(BaseModel):
     department: str
     topic: Topic
     source_type: SourceType
+    subtopic: str | None
     fused_score: float
     semantic_rank: int | None
     bm25_rank: int | None

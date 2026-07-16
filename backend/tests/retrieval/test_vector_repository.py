@@ -4,7 +4,7 @@ from qdrant_client import models
 
 from app.embeddings.embedder import EMBEDDING_DIMENSION
 from app.models.conversation_session import StudentType
-from app.models.document import Topic
+from app.models.document import Audience, DocumentType, Topic
 from app.repositories.vector_repository import VectorRepository
 
 
@@ -20,6 +20,8 @@ def _point(
     seed: int,
     topic: str = Topic.HOUSING.value,
     student_types: list[str] | None = None,
+    audience: list[str] | None = None,
+    document_type: str | None = None,
 ) -> models.PointStruct:
     return models.PointStruct(
         id=str(uuid.uuid4()),
@@ -28,6 +30,8 @@ def _point(
             "document_id": str(document_id),
             "topic": topic,
             "student_types": student_types or [],
+            "audience": audience or [],
+            "document_type": document_type,
             "content": f"chunk {seed}",
         },
     )
@@ -99,3 +103,53 @@ async def test_search_filters_by_student_type_including_documents_with_no_studen
 async def test_ensure_collection_is_idempotent(test_vector_repository: VectorRepository) -> None:
     await test_vector_repository.ensure_collection()
     await test_vector_repository.ensure_collection()
+
+
+async def test_search_filters_by_audience_including_documents_with_no_audience(
+    test_vector_repository: VectorRepository,
+) -> None:
+    alumni_point = _point(document_id=uuid.uuid4(), seed=1, audience=[Audience.ALUMNI.value])
+    student_point = _point(
+        document_id=uuid.uuid4(), seed=1, audience=[Audience.CURRENT_STUDENT.value]
+    )
+    everyone_point = _point(document_id=uuid.uuid4(), seed=1, audience=[])
+    await test_vector_repository.upsert_chunks([alumni_point, student_point, everyone_point])
+
+    results = await test_vector_repository.search(
+        _vector(1), limit=10, audience=Audience.CURRENT_STUDENT
+    )
+
+    result_ids = {r.id for r in results}
+    assert student_point.id in result_ids
+    assert everyone_point.id in result_ids
+    assert alumni_point.id not in result_ids
+
+
+async def test_search_filters_by_document_type(test_vector_repository: VectorRepository) -> None:
+    faq_point = _point(document_id=uuid.uuid4(), seed=1, document_type=DocumentType.FAQ.value)
+    policy_point = _point(document_id=uuid.uuid4(), seed=1, document_type=DocumentType.POLICY.value)
+    await test_vector_repository.upsert_chunks([faq_point, policy_point])
+
+    results = await test_vector_repository.search(
+        _vector(1), limit=10, document_type=DocumentType.FAQ
+    )
+
+    result_ids = {r.id for r in results}
+    assert faq_point.id in result_ids
+    assert policy_point.id not in result_ids
+
+
+async def test_search_filters_by_document_type_includes_documents_with_no_document_type_set(
+    test_vector_repository: VectorRepository,
+) -> None:
+    faq_point = _point(document_id=uuid.uuid4(), seed=1, document_type=DocumentType.FAQ.value)
+    unclassified_point = _point(document_id=uuid.uuid4(), seed=1, document_type=None)
+    await test_vector_repository.upsert_chunks([faq_point, unclassified_point])
+
+    results = await test_vector_repository.search(
+        _vector(1), limit=10, document_type=DocumentType.FAQ
+    )
+
+    result_ids = {r.id for r in results}
+    assert faq_point.id in result_ids
+    assert unclassified_point.id in result_ids

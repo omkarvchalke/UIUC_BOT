@@ -1,21 +1,16 @@
 import uuid
 from dataclasses import dataclass
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.embeddings.embedder import Embedder
 from app.models.conversation_session import StudentType
-from app.models.document import DocumentChunk, SourceType, Topic
+from app.models.document import Audience, DocumentChunk, DocumentType, SourceType, Topic
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.vector_repository import VectorRepository
 from app.retrieval.bm25_search import BM25Search
 
 logger = get_logger(__name__)
-
-# Standard constant from the original Reciprocal Rank Fusion paper (Cormack
-# et al.). Large enough that rank 1 vs. rank 2 doesn't dominate the fused
-# score, so a chunk ranked decently by *both* rankers can outscore a chunk
-# ranked #1 by only one of them.
-_RRF_K = 60
 
 
 @dataclass(frozen=True)
@@ -29,6 +24,7 @@ class RetrievedChunk:
     department: str
     topic: Topic
     source_type: SourceType
+    subtopic: str | None
     fused_score: float
     semantic_rank: int | None
     bm25_rank: int | None
@@ -68,13 +64,29 @@ class HybridRetriever:
         candidate_limit: int = 20,
         topic: Topic | None = None,
         student_type: StudentType | None = None,
+        audience: Audience | None = None,
+        document_type: DocumentType | None = None,
     ) -> list[RetrievedChunk]:
         query_vector = self._embedder.embed_query(query)
 
         semantic_points = await self._vectors.search(
-            query_vector, limit=candidate_limit, topic=topic, student_type=student_type
+            query_vector,
+            limit=candidate_limit,
+            topic=topic,
+            student_type=student_type,
+            audience=audience,
+            document_type=document_type,
         )
         corpus = await self._get_corpus(topic=topic, student_type=student_type)
+        # Not part of the (topic, student_type) cache key: audience/
+        # document_type aren't driven by any real per-request signal yet
+        # (see app/graph/nodes.py's metadata_filter node), so growing the
+        # cache key for an unused dimension is complexity with no payoff --
+        # a post-filter is equivalent and simpler. Must express the same
+        # predicate as the Qdrant-side filter above (see
+        # VectorRepository._build_filter) so semantic_points and corpus
+        # agree on which chunks are eligible.
+        corpus = self._filter_corpus(corpus, audience=audience, document_type=document_type)
         bm25_results = BM25Search(corpus).search(query, limit=candidate_limit)
 
         corpus_by_id = {str(chunk.id): chunk for chunk in corpus}
@@ -86,6 +98,23 @@ class HybridRetriever:
         }
 
         return self._fuse(corpus_by_id, semantic_ranks, bm25_ranks, limit=limit)
+
+    @staticmethod
+    def _filter_corpus(
+        chunks: list[DocumentChunk],
+        *,
+        audience: Audience | None,
+        document_type: DocumentType | None,
+    ) -> list[DocumentChunk]:
+        if audience is not None:
+            chunks = [
+                chunk
+                for chunk in chunks
+                if not chunk.document.audience or audience in chunk.document.audience
+            ]
+        if document_type is not None:
+            chunks = [chunk for chunk in chunks if chunk.document.document_type == document_type]
+        return chunks
 
     async def _get_corpus(
         self, *, topic: Topic | None, student_type: StudentType | None
@@ -124,14 +153,15 @@ class HybridRetriever:
         limit: int,
     ) -> list[RetrievedChunk]:
         all_ids = set(semantic_ranks) | set(bm25_ranks)
+        rrf_k = get_settings().rrf_k
 
         scored: list[tuple[str, float]] = []
         for chunk_id in all_ids:
             score = 0.0
             if chunk_id in semantic_ranks:
-                score += 1 / (_RRF_K + semantic_ranks[chunk_id])
+                score += 1 / (rrf_k + semantic_ranks[chunk_id])
             if chunk_id in bm25_ranks:
-                score += 1 / (_RRF_K + bm25_ranks[chunk_id])
+                score += 1 / (rrf_k + bm25_ranks[chunk_id])
             scored.append((chunk_id, score))
 
         scored.sort(key=lambda pair: pair[1], reverse=True)
@@ -157,6 +187,7 @@ class HybridRetriever:
                     department=document.department,
                     topic=document.topic,
                     source_type=document.source_type,
+                    subtopic=chunk.subtopic,
                     fused_score=score,
                     semantic_rank=semantic_ranks.get(chunk_id),
                     bm25_rank=bm25_ranks.get(chunk_id),

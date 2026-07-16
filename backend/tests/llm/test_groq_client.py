@@ -15,9 +15,7 @@ async def test_complete_json_returns_valid_json() -> None:
     messages = [
         {
             "role": "system",
-            "content": (
-                'Respond with exactly this JSON object and nothing else: {"answer": "ok"}'
-            ),
+            "content": ('Respond with exactly this JSON object and nothing else: {"answer": "ok"}'),
         },
         {"role": "user", "content": "test"},
     ]

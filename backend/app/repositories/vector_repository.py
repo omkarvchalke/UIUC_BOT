@@ -6,7 +6,7 @@ from qdrant_client import AsyncQdrantClient, models
 from app.core.config import get_settings
 from app.embeddings.embedder import EMBEDDING_DIMENSION
 from app.models.conversation_session import StudentType
-from app.models.document import Topic
+from app.models.document import Audience, DocumentType, Topic
 
 
 @lru_cache
@@ -61,19 +61,41 @@ class VectorRepository:
         limit: int,
         topic: Topic | None = None,
         student_type: StudentType | None = None,
+        audience: Audience | None = None,
+        document_type: DocumentType | None = None,
     ) -> list[models.ScoredPoint]:
         result = await self._client.query_points(
             collection_name=self._collection_name,
             query=query_vector,
             limit=limit,
-            query_filter=self._build_filter(topic=topic, student_type=student_type),
+            query_filter=self._build_filter(
+                topic=topic,
+                student_type=student_type,
+                audience=audience,
+                document_type=document_type,
+            ),
         )
         return result.points
 
     @staticmethod
     def _build_filter(
-        *, topic: Topic | None, student_type: StudentType | None
+        *,
+        topic: Topic | None,
+        student_type: StudentType | None,
+        audience: Audience | None,
+        document_type: DocumentType | None,
     ) -> models.Filter | None:
+        # Every condition below lives in `must` -- including the
+        # "explicit match OR field absent" fallbacks, which are each their
+        # own nested Filter(should=[...]). They can't sit in one flat
+        # top-level `should` list: Qdrant ORs everything in `should`
+        # together, so two independent should-shaped conditions (e.g.
+        # student_type and audience) in the same list would match a point
+        # satisfying *either* one, not both -- wrong the moment a second
+        # such condition exists. Nesting each as its own must-entry keeps
+        # every dimension independently required (AND of ORs), same as
+        # student_type alone worked correctly before audience/document_type
+        # existed.
         must: list[models.Condition] = []
         if topic is not None:
             # str(), not .value: Topic is a StrEnum, so this is identical
@@ -86,18 +108,49 @@ class VectorRepository:
                 models.FieldCondition(key="topic", match=models.MatchValue(value=str(topic)))
             )
 
-        should: list[models.Condition] = []
         if student_type is not None:
             # A document with no student_types applies to everyone, so it
             # must match too -- not just documents explicitly tagged with
             # this student type.
-            should = [
-                models.FieldCondition(
-                    key="student_types", match=models.MatchAny(any=[student_type.value])
-                ),
-                models.IsEmptyCondition(is_empty=models.PayloadField(key="student_types")),
-            ]
+            must.append(
+                models.Filter(
+                    should=[
+                        models.FieldCondition(
+                            key="student_types", match=models.MatchAny(any=[student_type.value])
+                        ),
+                        models.IsEmptyCondition(is_empty=models.PayloadField(key="student_types")),
+                    ]
+                )
+            )
 
-        if not must and not should:
-            return None
-        return models.Filter(must=must or None, should=should or None)
+        if audience is not None:
+            # audience is a *list* field on Document, same shape as
+            # student_types -- identical "explicit match OR absent" rule.
+            must.append(
+                models.Filter(
+                    should=[
+                        models.FieldCondition(
+                            key="audience", match=models.MatchAny(any=[audience.value])
+                        ),
+                        models.IsEmptyCondition(is_empty=models.PayloadField(key="audience")),
+                    ]
+                )
+            )
+
+        if document_type is not None:
+            # document_type is a nullable *scalar* on Document (unlike
+            # topic, which is required) -- a document with no classified
+            # type must still match, same "absent = applies to everyone"
+            # reasoning as student_type/audience above.
+            must.append(
+                models.Filter(
+                    should=[
+                        models.FieldCondition(
+                            key="document_type", match=models.MatchValue(value=str(document_type))
+                        ),
+                        models.IsNullCondition(is_null=models.PayloadField(key="document_type")),
+                    ]
+                )
+            )
+
+        return models.Filter(must=must) if must else None

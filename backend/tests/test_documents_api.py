@@ -17,7 +17,9 @@ _HTML = (
 
 
 async def _seed_document(
-    db_session_factory: async_sessionmaker[AsyncSession], *, url: str = "https://example.illinois.edu/library"
+    db_session_factory: async_sessionmaker[AsyncSession],
+    *,
+    url: str = "https://example.illinois.edu/library",
 ) -> str:
     async with db_session_factory() as session:
         service = IngestionService(DocumentRepository(session))

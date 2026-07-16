@@ -5,6 +5,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.ingestion.chunking import ChunkResult
 from app.models.conversation_session import StudentType
 from app.models.document import (
     Audience,
@@ -129,17 +130,18 @@ class DocumentRepository:
         )
         return list(result.scalars().all())
 
-    async def replace_chunks(self, document_id: uuid.UUID, chunk_texts: list[str]) -> None:
+    async def replace_chunks(self, document_id: uuid.UUID, chunks: list[ChunkResult]) -> None:
         await self._db.execute(
             delete(DocumentChunk).where(DocumentChunk.document_id == document_id)
         )
-        for number, text in enumerate(chunk_texts, start=1):
+        for number, chunk in enumerate(chunks, start=1):
             self._db.add(
                 DocumentChunk(
                     document_id=document_id,
                     chunk_number=number,
-                    content=text,
-                    char_count=len(text),
+                    content=chunk.text,
+                    char_count=len(chunk.text),
+                    subtopic=chunk.subtopic,
                 )
             )
         await self._db.commit()

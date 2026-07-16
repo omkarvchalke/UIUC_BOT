@@ -85,7 +85,5 @@ def test_history_is_truncated_to_recent_messages() -> None:
 
 def test_empty_context_uses_placeholder() -> None:
     builder = PromptBuilder()
-    messages = builder.build_messages(
-        query="anything", context="", history=[], student_type=None
-    )
+    messages = builder.build_messages(query="anything", context="", history=[], student_type=None)
     assert "no relevant context" in messages[-1]["content"].lower()
