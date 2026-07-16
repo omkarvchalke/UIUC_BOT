@@ -41,6 +41,36 @@ class SourceType(enum.StrEnum):
     PDF = "pdf"
 
 
+class Audience(enum.StrEnum):
+    """Who a page is *written for* -- distinct from StudentType (which
+    admission category a page applies to). A financial-aid page can be
+    audience=[CURRENT_STUDENT, PROSPECTIVE_STUDENT] and independently
+    student_types=() (applies to every admission category). Two orthogonal
+    filters, not two names for the same thing."""
+
+    PROSPECTIVE_STUDENT = "prospective_student"
+    CURRENT_STUDENT = "current_student"
+    FACULTY_STAFF = "faculty_staff"
+    ALUMNI = "alumni"
+    PARENT_FAMILY = "parent_family"
+    GENERAL_PUBLIC = "general_public"
+
+
+class DocumentType(enum.StrEnum):
+    """Semantic kind of content -- distinct from SourceType (HTML/PDF,
+    file format). A PDF can be a FORM; an HTML page can also be a FORM
+    (an embedded web form)."""
+
+    POLICY = "policy"
+    FORM = "form"
+    FAQ = "faq"
+    DEADLINE_REFERENCE = "deadline_reference"
+    NEWS_ANNOUNCEMENT = "news_announcement"
+    PROGRAM_DESCRIPTION = "program_description"
+    HOW_TO_GUIDE = "how_to_guide"
+    CONTACT_INFO = "contact_info"
+
+
 def _string_backed_enum(enum_cls: type[enum.StrEnum], *, length: int) -> SAEnum:
     # native_enum=False: plain VARCHAR + Python-side validation instead of a
     # Postgres CREATE TYPE. Native Postgres enums require an ALTER TYPE ...
@@ -69,7 +99,26 @@ class Document(Base):
     student_types: Mapped[list[StudentType]] = mapped_column(
         ARRAY(_string_backed_enum(StudentType, length=32)), default=list
     )
+    audience: Mapped[list[Audience]] = mapped_column(
+        ARRAY(_string_backed_enum(Audience, length=32)), default=list
+    )
+    # Nullable: ~1000+ existing rows predate this column and have no value
+    # until scripts/backfill_document_metadata.py runs. New rows from
+    # ingestion always get a real value (see IngestionService/Crawler), so
+    # this is effectively non-null going forward even though the DB allows
+    # it -- a NOT NULL constraint would have required backfilling inside
+    # the migration transaction itself, coupling a classifier's behavior to
+    # a one-time DDL change instead of the same tested pipeline code.
+    document_type: Mapped[DocumentType | None] = mapped_column(
+        _string_backed_enum(DocumentType, length=32)
+    )
+    keywords: Mapped[list[str]] = mapped_column(ARRAY(String(100)), default=list)
     last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set on every successful crawl/ingest of this URL -- distinct from
+    # updated_at (which also changes on, e.g., a re-index-only touch).
+    # Powers incremental crawling: a conditional GET only makes sense once
+    # we know when a URL was last actually checked.
+    last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     content_hash: Mapped[str] = mapped_column(String(64))
     # Compared against content_hash to decide whether Qdrant needs
     # re-indexing. Separate from content_hash (Phase 3) because ingestion and
@@ -86,6 +135,11 @@ class Document(Base):
         cascade="all, delete-orphan",
         order_by="DocumentChunk.chunk_number",
     )
+    versions: Mapped[list["DocumentVersion"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        order_by="DocumentVersion.captured_at",
+    )
 
 
 class DocumentChunk(Base):
@@ -99,6 +153,31 @@ class DocumentChunk(Base):
     chunk_number: Mapped[int]
     content: Mapped[str] = mapped_column(Text)
     char_count: Mapped[int]
+    # Which section of the source document this chunk came from (e.g.
+    # "Registration Holds" on a Registrar page with many sibling sections).
+    # Nullable: populated by the semantic chunker, not this phase -- see
+    # app/ingestion/chunking.py's module docstring for the phase boundary.
+    subtopic: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+class DocumentVersion(Base):
+    """Append-only audit trail of a Document's previous content, written
+    just before an upsert overwrites Document with new content (see
+    DocumentRepository.upsert_document). Not a duplicate of current
+    content -- only written when content_hash is about to change, so a
+    document that never changes accumulates zero version rows."""
+
+    __tablename__ = "document_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    content_hash: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(512))
+    captured_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    document: Mapped[Document] = relationship(back_populates="versions")
