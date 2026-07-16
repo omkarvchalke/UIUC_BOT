@@ -345,4 +345,171 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Champaign-Urbana Mass Transit District",
     ),
+    # The following 20 were checked against a ~100-URL hand-compiled list
+    # spanning many additional departments (banking, bursar, safety,
+    # bookstore, etc.). Most of that list was either already covered, dead
+    # links, login-gated, or thin nav hubs (see the same WebFetch-verify
+    # pattern used for earlier additions) -- these had real substantive
+    # content.
+    SourceConfig(
+        url="https://www.housing.illinois.edu/dine/purchase",
+        department="University Housing",
+        topic=Topic.DINING,
+        source_type=SourceType.HTML,
+        fallback_title="Purchasing Illini Cash and Meal Plans",
+    ),
+    SourceConfig(
+        url="https://www.housing.illinois.edu/cost",
+        department="University Housing",
+        topic=Topic.HOUSING,
+        source_type=SourceType.HTML,
+        fallback_title="Costs",
+    ),
+    SourceConfig(
+        url="https://www.studentmoney.uillinois.edu/",
+        department="Student Money Management Center",
+        topic=Topic.FINANCIAL_AID,
+        source_type=SourceType.HTML,
+        fallback_title="Student Money Management Center",
+    ),
+    SourceConfig(
+        url="https://www.studentmoney.uillinois.edu/guides/InternationalStudents",
+        department="Student Money Management Center",
+        topic=Topic.FINANCIAL_AID,
+        source_type=SourceType.HTML,
+        fallback_title="Money Management for International Students",
+        student_types=(StudentType.INTERNATIONAL,),
+    ),
+    SourceConfig(
+        url="https://paymybill.uillinois.edu/",
+        department="University Bursar",
+        topic=Topic.FINANCIAL_AID,
+        source_type=SourceType.HTML,
+        fallback_title="Pay My Bill",
+    ),
+    SourceConfig(
+        url="https://paymybill.uillinois.edu/refunds",
+        department="University Bursar",
+        topic=Topic.FINANCIAL_AID,
+        source_type=SourceType.HTML,
+        fallback_title="Refunds",
+    ),
+    SourceConfig(
+        url="https://paymybill.uillinois.edu/refunds/freebankoptions",
+        department="University Bursar",
+        topic=Topic.FINANCIAL_AID,
+        source_type=SourceType.HTML,
+        fallback_title="Free Banking Options",
+    ),
+    SourceConfig(
+        url="https://www.treasury.uillinois.edu/icp/banking",
+        department="University Treasury",
+        topic=Topic.FINANCIAL_AID,
+        source_type=SourceType.HTML,
+        fallback_title="Student Banking Program",
+    ),
+    SourceConfig(
+        url="https://www.icard.uillinois.edu/public/bank-services.cfm",
+        department="I-Card Office",
+        topic=Topic.FINANCIAL_AID,
+        source_type=SourceType.HTML,
+        fallback_title="i-card Banking Services",
+    ),
+    SourceConfig(
+        url="https://icard.uillinois.edu/public/",
+        department="I-Card Office",
+        topic=Topic.TECHNOLOGY_SERVICES,
+        source_type=SourceType.HTML,
+        fallback_title="i-card",
+    ),
+    SourceConfig(
+        url="https://grad.illinois.edu/",
+        department="The Graduate College",
+        topic=Topic.ADMISSIONS,
+        source_type=SourceType.HTML,
+        fallback_title="The Graduate College",
+        student_types=(StudentType.GRADUATE,),
+    ),
+    SourceConfig(
+        url="https://webstore.illinois.edu/home/",
+        department="University of Illinois Webstore",
+        topic=Topic.TECHNOLOGY_SERVICES,
+        source_type=SourceType.HTML,
+        fallback_title="University of Illinois Webstore",
+    ),
+    SourceConfig(
+        url="https://catalog.illinois.edu/",
+        department="Office of the Provost",
+        topic=Topic.COURSE_REGISTRATION,
+        source_type=SourceType.HTML,
+        fallback_title="Course Catalog",
+    ),
+    SourceConfig(
+        url="https://campusrec.illinois.edu/facilities",
+        department="Campus Recreation",
+        topic=Topic.CAMPUS_RECREATION,
+        source_type=SourceType.HTML,
+        fallback_title="Facilities",
+    ),
+    SourceConfig(
+        url="https://hireillini.illinois.edu/",
+        department="The Career Center",
+        topic=Topic.STUDENT_EMPLOYMENT,
+        source_type=SourceType.HTML,
+        fallback_title="Hire Illini",
+    ),
+    SourceConfig(
+        # The root page's static text turned out thinner than it first
+        # looked -- mostly nav links (SafeWalk, safety tips) plus rotating
+        # news/crime-blotter snippets, no concrete phone numbers despite an
+        # initial WebFetch summary suggesting otherwise (that summary
+        # apparently drew on content this static scrape didn't actually
+        # capture). The /contact/ subpage below has the real numbers;
+        # keeping both since the root page's SafeWalk/mission content is
+        # still real, just not the emergency-contact info a student most
+        # likely wants.
+        url="https://www.police.illinois.edu/",
+        department="Division of Public Safety",
+        topic=Topic.CAMPUS_SAFETY,
+        source_type=SourceType.HTML,
+        fallback_title="Division of Public Safety",
+    ),
+    SourceConfig(
+        url="https://www.police.illinois.edu/contact/",
+        department="Division of Public Safety",
+        topic=Topic.CAMPUS_SAFETY,
+        source_type=SourceType.HTML,
+        fallback_title="Contact - Division of Public Safety",
+    ),
+    SourceConfig(
+        url="https://commencement.illinois.edu/",
+        department="Office of the Registrar",
+        topic=Topic.ACADEMIC_CALENDAR,
+        source_type=SourceType.HTML,
+        fallback_title="Illinois Commencement",
+    ),
+    SourceConfig(
+        url="https://registrar.illinois.edu/graduation/",
+        department="Office of the Registrar",
+        topic=Topic.ACADEMIC_CALENDAR,
+        source_type=SourceType.HTML,
+        fallback_title="Graduation",
+    ),
+    SourceConfig(
+        url="https://registrar.illinois.edu/academic-records/transcripts/",
+        department="Office of the Registrar",
+        topic=Topic.REGISTRATION,
+        source_type=SourceType.HTML,
+        fallback_title="Transcripts",
+    ),
+    SourceConfig(
+        url="https://bookstore.illinois.edu/",
+        department="Illini Union Bookstore",
+        # No clean topical fit (retail, not a service category this enum
+        # covers) -- STUDENT_ORGANIZATIONS is the least-wrong bucket among
+        # "general campus life" topics.
+        topic=Topic.STUDENT_ORGANIZATIONS,
+        source_type=SourceType.HTML,
+        fallback_title="Illini Union Bookstore",
+    ),
 )

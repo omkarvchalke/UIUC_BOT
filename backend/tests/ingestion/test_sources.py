@@ -22,7 +22,14 @@ _ALLOWED_EXTERNAL_DOMAINS = (
 def test_all_urls_are_https_and_on_the_illinois_edu_domain() -> None:
     for source in SOURCES:
         assert source.url.startswith("https://"), source.url
-        is_illinois_edu = ".illinois.edu" in source.url
+        # uillinois.edu (paymybill/studentmoney/treasury/icard...) is the
+        # University of Illinois *System* domain covering all three
+        # campuses, distinct from illinois.edu (Urbana-Champaign
+        # specifically) but equally official -- ".illinois.edu" alone
+        # doesn't match it (there's no dot before "illinois" in
+        # "uillinois.edu"), so it needs its own check rather than silently
+        # falling through to the external-domain allowlist.
+        is_illinois_edu = ".illinois.edu" in source.url or ".uillinois.edu" in source.url
         is_allowed_external = any(domain in source.url for domain in _ALLOWED_EXTERNAL_DOMAINS)
         assert is_illinois_edu or is_allowed_external, source.url
 

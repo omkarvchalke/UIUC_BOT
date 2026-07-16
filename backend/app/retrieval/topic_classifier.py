@@ -49,6 +49,7 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     Topic.STUDENT_ORGANIZATIONS: "student clubs and registered student organizations",
     Topic.ACADEMIC_CALENDAR: "academic calendar, semester dates, add/drop deadlines",
     Topic.COURSE_REGISTRATION: "registering for classes, course registration",
+    Topic.CAMPUS_SAFETY: "campus police, emergency contacts, safety escorts, crime reporting",
 }
 
 
