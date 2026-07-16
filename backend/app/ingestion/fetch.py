@@ -27,12 +27,27 @@ async def fetch_url(
     pool across many sources, and so tests can inject an httpx.MockTransport
     instead of hitting the network.
     """
+    response = await fetch_response(url, client=client, timeout=timeout)
+    return response.content
+
+
+async def fetch_response(
+    url: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = _DEFAULT_TIMEOUT,
+) -> httpx.Response:
+    """Like fetch_url, but returns the full Response -- for callers that
+    need the post-redirect URL or Content-Type header (the crawler, to
+    detect a login-wall redirect or a non-HTML response), not just the
+    body bytes.
+    """
     owns_client = client is None
     http_client = client or build_client(timeout)
     try:
         response = await http_client.get(url)
         response.raise_for_status()
-        return response.content
+        return response
     except httpx.HTTPError as exc:
         raise FetchError(f"Failed to fetch {url}: {exc}") from exc
     finally:

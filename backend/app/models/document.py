@@ -33,6 +33,7 @@ class Topic(enum.StrEnum):
     ACADEMIC_CALENDAR = "academic_calendar"
     COURSE_REGISTRATION = "course_registration"
     CAMPUS_SAFETY = "campus_safety"
+    ACCESSIBILITY = "accessibility"
 
 
 class SourceType(enum.StrEnum):

@@ -50,6 +50,18 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     Topic.ACADEMIC_CALENDAR: "academic calendar, semester dates, add/drop deadlines",
     Topic.COURSE_REGISTRATION: "registering for classes, course registration",
     Topic.CAMPUS_SAFETY: "campus police, emergency contacts, safety escorts, crime reporting",
+    # Added after the domain-only crawler (app/ingestion/crawl_seeds.py) hit
+    # dres.illinois.edu (Disability Resources and Educational Services) and,
+    # with no accessibility-specific topic to embed against, misclassified
+    # most of its pages as international_student_services -- confirmed via a
+    # live crawl smoke test. topic is a hard retrieval filter
+    # (VectorRepository._build_filter), so a wrong topic here doesn't just
+    # mislabel a page, it hides it from accessibility queries entirely and
+    # pollutes results for whatever topic it got misclassified into.
+    Topic.ACCESSIBILITY: (
+        "disability accommodations, accessibility services, DRES, note-taking "
+        "and testing accommodations for students with disabilities"
+    ),
 }
 
 

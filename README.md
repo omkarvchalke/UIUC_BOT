@@ -192,6 +192,43 @@ step, which is out of scope. The system already degrades correctly here rather t
 the groundedness self-report (see Groq Integration below) reports `grounded: false` for hours
 questions instead of confidently inventing an answer.
 
+### Automated discovery crawler
+
+Hand-curating individual URLs in `sources.py` doesn't scale and goes stale as UIUC restructures
+its sites. `app/ingestion/crawl_seeds.py` instead lists 38 approved UIUC/UI-System domains (one
+`CrawlSeed` each, no `path_prefixes`) and `Crawler` (`app/ingestion/crawler.py`) does bounded BFS
+crawls of each, `max_depth=4` / `max_pages=60` per seed by default:
+
+```bash
+cd backend
+uv run python -m scripts.run_crawl      # crawl + auto-ingest new pages from all 38 seeds
+uv run python -m scripts.run_indexing   # embed whatever run_crawl added
+uv run python -m scripts.eval_answers   # confirm answer quality didn't regress
+```
+
+Per-page quality control happens inside `Crawler`, not by curating which URLs to visit:
+
+- **robots.txt** compliance and a politeness delay between requests.
+- **Login-wall detection**: checks the *post-redirect* URL (via `fetch_response()`, not just the
+  requested one) against known SSO/login markers (`login`, `sso`, `shibboleth`, `saml`, `identity`,
+  etc.) — needed because some domains (`identity.uillinois.edu`) redirect to a login URL that
+  doesn't contain the obvious markers, so the check is per-domain-tuned rather than one generic
+  regex.
+- **Non-HTML rejection by Content-Type**, not file extension — a PDF gets a distinct
+  `"pdf (index separately)"` rejection reason rather than being silently dropped or mis-parsed as
+  HTML, so `discover_sources.py` reports still surface it for a possible future separate PDF
+  ingestion path.
+- **Soft-404 and thinness filtering**, same as manual sources.
+- **Duplicate-content detection** via a SHA-256 hash of extracted text, tracked across the whole
+  crawl: `map.illinois.edu` is a client-side-rendered app that serves the same static shell on
+  every route, so without this it would fill its entire page budget with copies of one page. This
+  generalizes what used to be a one-off hand-exclusion of that domain.
+
+`scripts/discover_sources.py --full` runs the same seeds at a much higher, unbounded budget
+(`--max-pages 300 --max-depth 6` by default, no ingestion) and writes every page found — including
+rejected ones and the reason — to a CSV, for reviewing crawl coverage or a candidate new domain
+before trusting it to auto-ingest.
+
 ## Embeddings, Qdrant, and Hybrid Retrieval
 
 Embeds every ingested chunk (local, CPU-only `BAAI/bge-small-en-v1.5` — no paid embedding API)

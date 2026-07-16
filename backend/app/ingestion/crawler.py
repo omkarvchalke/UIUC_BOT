@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import re
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -9,7 +10,7 @@ from bs4 import BeautifulSoup, Tag
 
 from app.core.logging import get_logger
 from app.embeddings.embedder import Embedder
-from app.ingestion.fetch import FetchError, build_client, fetch_url
+from app.ingestion.fetch import FetchError, build_client, fetch_response
 from app.ingestion.html_loader import parse_html
 from app.ingestion.robots import RobotsChecker
 from app.ingestion.sources import SOURCES, SourceConfig
@@ -42,6 +43,45 @@ _SKIP_EXTENSIONS = (
     ".jpg", ".jpeg", ".png", ".gif", ".svg", ".ico", ".css", ".js",
     ".zip", ".mp3", ".mp4", ".docx", ".xlsx", ".pptx",
 )  # fmt: skip
+# Deliberately does NOT include .pdf: a PDF found by extension still gets
+# fetched so its Content-Type is checked and it lands in the rejected list
+# with a distinct "pdf (index separately)" reason (see _crawl_seed) --
+# visible in a discover_sources.py report for someone to add via a PDF
+# pipeline later, rather than silently vanishing the way the other skipped
+# extensions do.
+
+# URL substrings that mean "this is an auth wall, not content" -- checked
+# against the *post-redirect* URL, since a login-gated page on an
+# otherwise-public domain (canvas.illinois.edu, identity.uillinois.edu)
+# typically redirects to an SSO/Shibboleth flow rather than 404ing or
+# rejecting the request outright, so a plain HTTP-status check never sees
+# it as an error.
+_LOGIN_URL_MARKERS = (
+    "login",
+    "signin",
+    "sign-in",
+    "sso",
+    "shibboleth",
+    "saml",
+    "authenticate",
+    "auth/",
+    # identity.uillinois.edu redirects to a URL with none of the above
+    # markers (".../iamFrontEnd/iam/start") -- the domain itself is
+    # nothing but an identity/auth management portal, so treating
+    # "identity" as a marker is accurate here without the false-positive
+    # risk a shorter token like "iam" would have (e.g. "diamond").
+    "identity",
+)
+
+
+def _looks_like_login_page(url: str) -> bool:
+    lowered = url.lower()
+    return any(marker in lowered for marker in _LOGIN_URL_MARKERS)
+
+
+def _is_html_content_type(content_type: str) -> bool:
+    return "text/html" in content_type.lower()
+
 
 # Cheap URL/title keyword signals for which StudentType a page is scoped
 # to -- the same judgment call made by hand for every manifest source in
@@ -108,7 +148,12 @@ def _extract_links(html: str, *, base_url: str) -> set[str]:
     for tag in soup.find_all("a", href=True):
         if not isinstance(tag, Tag):
             continue
-        href = str(tag["href"])
+        # .strip(): some sites (parking.illinois.edu confirmed) emit
+        # href="  /about  " with stray whitespace inside the attribute --
+        # unstripped, urljoin preserves it and it gets percent-encoded into
+        # the URL (.../about%20%20), which 404s and wastes a page-budget
+        # slot on every crawl.
+        href = str(tag["href"]).strip()
         if href.startswith(("mailto:", "tel:", "javascript:", "#")):
             continue
         links.add(_normalize(urljoin(base_url, href)))
@@ -181,6 +226,14 @@ class Crawler:
             embedder=Embedder(), confidence_threshold=0.0
         )
         self._robots = RobotsChecker()
+        # Maps a content hash to the first URL seen with that content, for
+        # the lifetime of this Crawler instance (spans every seed in a
+        # crawl() call). Guards against sites that serve byte-identical
+        # content for many different routes -- found on map.illinois.edu, a
+        # client-side-rendered app where 10 different URLs all returned the
+        # same ~5000-char static shell. Without this, every route on a site
+        # like that gets ingested as a separate "unique" document.
+        self._content_hashes: dict[str, str] = {}
 
     async def crawl(
         self, seeds: tuple[CrawlSeed, ...], *, client: httpx.AsyncClient | None = None
@@ -223,12 +276,27 @@ class Crawler:
 
             await asyncio.sleep(self._delay)
             try:
-                raw = await fetch_url(url, client=client)
+                response = await fetch_response(url, client=client)
             except FetchError as exc:
                 rejected.append((url, f"fetch failed: {exc}"))
                 continue
 
-            html = raw.decode("utf-8", errors="replace")
+            final_url = str(response.url)
+            if _looks_like_login_page(final_url):
+                rejected.append((url, "login-gated page"))
+                continue
+
+            content_type = response.headers.get("content-type", "")
+            if not _is_html_content_type(content_type):
+                reason = (
+                    "pdf (index separately)"
+                    if "application/pdf" in content_type.lower()
+                    else f"non-HTML content ({content_type.split(';')[0] or 'unknown'})"
+                )
+                rejected.append((url, reason))
+                continue
+
+            html = response.content.decode("utf-8", errors="replace")
             extracted = parse_html(html, fallback_title=url)
 
             if url in self._existing_urls:
@@ -238,23 +306,29 @@ class Crawler:
             elif len(extracted.text) < self._min_chars:
                 rejected.append((url, f"too thin ({len(extracted.text)} chars)"))
             else:
-                topic = self._classifier.classify(extracted.text[:2000]).topic
-                if topic is None:
-                    rejected.append((url, "could not classify a topic"))
+                content_hash = hashlib.sha256(extracted.text.encode("utf-8")).hexdigest()
+                duplicate_of = self._content_hashes.get(content_hash)
+                if duplicate_of is not None:
+                    rejected.append((url, f"duplicate content (same as {duplicate_of})"))
                 else:
-                    accepted.append(
-                        SourceConfig(
-                            url=url,
-                            department=seed.department,
-                            topic=topic,
-                            source_type=SourceType.HTML,
-                            fallback_title=extracted.title,
-                            student_types=_infer_student_types(
-                                url, extracted.title, seed.default_student_types
-                            ),
+                    topic = self._classifier.classify(extracted.text[:2000]).topic
+                    if topic is None:
+                        rejected.append((url, "could not classify a topic"))
+                    else:
+                        self._content_hashes[content_hash] = url
+                        accepted.append(
+                            SourceConfig(
+                                url=url,
+                                department=seed.department,
+                                topic=topic,
+                                source_type=SourceType.HTML,
+                                fallback_title=extracted.title,
+                                student_types=_infer_student_types(
+                                    url, extracted.title, seed.default_student_types
+                                ),
+                            )
                         )
-                    )
-                    content_chars[url] = len(extracted.text)
+                        content_chars[url] = len(extracted.text)
 
             if depth >= seed.max_depth:
                 continue

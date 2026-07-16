@@ -32,7 +32,9 @@ def _site(pages: dict[str, bytes], robots: str | None = None) -> httpx.MockTrans
         if path == "/robots.txt":
             return httpx.Response(200, text=robots) if robots else httpx.Response(404)
         if path in pages:
-            return httpx.Response(200, content=pages[path])
+            return httpx.Response(
+                200, content=pages[path], headers={"content-type": "text/html; charset=utf-8"}
+            )
         return httpx.Response(404)
 
     return httpx.MockTransport(handler)
@@ -245,3 +247,101 @@ async def test_rejects_soft_404_pages() -> None:
 
     assert outcome.accepted == []
     assert outcome.rejected[0][1] == "looks like a soft-404 error page"
+
+
+async def test_rejects_pages_that_redirect_to_a_login_wall() -> None:
+    # Regression case: housing.illinois.edu/dining is a real public link
+    # that redirects to /user/login?destination=/dining for an
+    # unauthenticated request -- a plain HTTP-status check sees this as a
+    # normal 200 (the login *page* itself loads fine), so the redirect
+    # target has to be checked against login-URL markers.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/dining":
+            return httpx.Response(302, headers={"location": "/user/login?destination=/dining"})
+        if request.url.path == "/user/login":
+            return httpx.Response(
+                200,
+                content=_page("Login", _SUBSTANTIAL_TEXT),
+                headers={"content-type": "text/html"},
+            )
+        return httpx.Response(404)
+
+    seed = CrawlSeed(start_url="https://example.illinois.edu/dining", department="Test Dept")
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), follow_redirects=True
+    ) as client:
+        outcome = await _crawler().crawl((seed,), client=client)
+
+    assert outcome.accepted == []
+    assert outcome.rejected == [("https://example.illinois.edu/dining", "login-gated page")]
+
+
+async def test_rejects_non_html_content_with_a_distinct_reason_for_pdfs() -> None:
+    # PDFs (and any other non-HTML response, e.g. a JSON API) shouldn't be
+    # run through the HTML parser -- and per the "index separately"
+    # requirement, a PDF specifically needs its own recognizable reason so
+    # it's visible in a discovery report rather than lumped in with
+    # ordinary rejections.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/handbook.pdf":
+            return httpx.Response(
+                200, content=b"%PDF-1.4 fake", headers={"content-type": "application/pdf"}
+            )
+        return httpx.Response(404)
+
+    seed = CrawlSeed(start_url="https://example.illinois.edu/handbook.pdf", department="Test Dept")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        outcome = await _crawler().crawl((seed,), client=client)
+
+    assert outcome.accepted == []
+    assert outcome.rejected == [
+        ("https://example.illinois.edu/handbook.pdf", "pdf (index separately)")
+    ]
+
+
+async def test_strips_whitespace_from_link_hrefs() -> None:
+    # Regression case: parking.illinois.edu emits href="  /about  " with
+    # stray whitespace inside the attribute -- left unstripped, urljoin
+    # preserves it and it gets percent-encoded into the URL
+    # (.../about%20%20), which 404s and silently wastes a page-budget slot
+    # on every crawl instead of reaching the real page.
+    pages = {
+        "/a": _page("A", _SUBSTANTIAL_TEXT, links=("  /about  ",)),
+        "/about": _page("About", _SUBSTANTIAL_TEXT),
+    }
+    seed = CrawlSeed(start_url="https://example.illinois.edu/a", department="Test Dept")
+    async with httpx.AsyncClient(transport=_site(pages)) as client:
+        outcome = await _crawler().crawl((seed,), client=client)
+
+    urls = {s.url for s in outcome.accepted}
+    assert "https://example.illinois.edu/about" in urls
+    assert all("%20" not in url for url in urls)
+
+
+async def test_rejects_duplicate_content_served_at_a_different_url() -> None:
+    # Regression case: map.illinois.edu is a client-side-rendered app that
+    # serves the exact same static shell HTML for every route -- without
+    # this check, each route gets ingested as a separate "unique" document.
+    # /a and /b deliberately have no links to each other (a link's visible
+    # anchor text would make the two pages' extracted text differ) --
+    # instead a third hub page links to both, and /a/ /b share identical
+    # bodies.
+    pages = {
+        "/hub": _page("Hub", _SUBSTANTIAL_TEXT, links=("/a", "/b")),
+        "/a": _page("Shell", _SUBSTANTIAL_TEXT),
+        "/b": _page("Shell", _SUBSTANTIAL_TEXT),
+    }
+    seed = CrawlSeed(
+        start_url="https://example.illinois.edu/hub", department="Test Dept", max_depth=2
+    )
+    async with httpx.AsyncClient(transport=_site(pages)) as client:
+        outcome = await _crawler().crawl((seed,), client=client)
+
+    accepted_urls = {s.url for s in outcome.accepted}
+    assert "https://example.illinois.edu/hub" in accepted_urls
+    # Link-discovery order between /a and /b isn't guaranteed (a set), so
+    # exactly one of them is accepted -- which one wins isn't the point.
+    shell_urls = {"https://example.illinois.edu/a", "https://example.illinois.edu/b"}
+    assert len(accepted_urls & shell_urls) == 1
+    duplicate_reasons = [r for _, r in outcome.rejected if r.startswith("duplicate content")]
+    assert len(duplicate_reasons) == 1

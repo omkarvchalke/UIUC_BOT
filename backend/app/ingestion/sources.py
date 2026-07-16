@@ -512,4 +512,25 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Illini Union Bookstore",
     ),
+    SourceConfig(
+        # Topic.ACCESSIBILITY didn't exist until a crawl of dres.illinois.edu
+        # (added to the approved-domains crawler) surfaced the gap: with no
+        # accessibility-specific topic to embed against, the classifier was
+        # tagging DRES pages as international_student_services, which is a
+        # hard retrieval filter -- see app/retrieval/topic_classifier.py.
+        # Both URLs verified substantive (real numbered steps, not nav-only)
+        # via the crawler's own extraction during that smoke test.
+        url="https://dres.illinois.edu/apply",
+        department="Disability Resources and Educational Services",
+        topic=Topic.ACCESSIBILITY,
+        source_type=SourceType.HTML,
+        fallback_title="Apply for Accommodations - DRES",
+    ),
+    SourceConfig(
+        url="https://dres.illinois.edu/apply/documentation-requirements",
+        department="Disability Resources and Educational Services",
+        topic=Topic.ACCESSIBILITY,
+        source_type=SourceType.HTML,
+        fallback_title="Documentation Requirements - DRES",
+    ),
 )
