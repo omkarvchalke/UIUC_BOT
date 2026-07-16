@@ -1,0 +1,22 @@
+# Local dev/build artifacts and secrets that should never reach the Docker
+# build context or an image layer -- everything here is either regenerated
+# inside the container or genuinely never needed by the build.
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+.git/
+.gitignore
+
+.env
+.env.local
+
+*.log
+.DS_Store

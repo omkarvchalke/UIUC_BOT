@@ -1,0 +1,21 @@
+# Local dev/build artifacts and secrets that should never reach the Docker
+# build context or an image layer -- node_modules and .next are rebuilt
+# fresh inside the container (see Dockerfile's deps/builder stages), so
+# copying local copies in would only bloat the build context and risk
+# shipping a stale/host-specific build.
+
+node_modules/
+.next/
+out/
+
+.git/
+.gitignore
+
+.env
+.env*.local
+
+coverage/
+*.tsbuildinfo
+
+npm-debug.log*
+.DS_Store
