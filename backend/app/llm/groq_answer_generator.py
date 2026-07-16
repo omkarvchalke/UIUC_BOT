@@ -48,7 +48,13 @@ class GroqAnswerGenerator:
             raw = await self._client.complete_json(messages)
         except GroqError as exc:
             logger.warning("groq_generation_failed", error=str(exc))
-            return GeneratedAnswer(text=_FALLBACK_ANSWER, grounded=False)
+            # citation_indices=[], not the default None: None means "cite
+            # every chunk given" (see GeneratedAnswer's docstring), which
+            # here would attach real-looking sources to a message that
+            # isn't actually grounded in any of them -- confirmed live, a
+            # failed generation was surfacing "7 sources" under the generic
+            # fallback text.
+            return GeneratedAnswer(text=_FALLBACK_ANSWER, grounded=False, citation_indices=[])
 
         return self._parse(raw)
 

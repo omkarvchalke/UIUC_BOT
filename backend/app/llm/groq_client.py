@@ -24,7 +24,12 @@ class GroqClient:
         self._client = client or get_groq_client()
 
     async def complete_json(
-        self, messages: list[dict[str, str]], *, model: str | None = None, temperature: float = 0.2
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        temperature: float = 0.2,
+        max_completion_tokens: int = 2048,
     ) -> str:
         settings = get_settings()
         try:
@@ -32,10 +37,22 @@ class GroqClient:
             # TypedDicts and a model Literal; we intentionally accept any
             # plain dicts and any configured model string here so the model
             # ID stays a runtime setting, not a type-checked constant.
+            #
+            # max_completion_tokens: without this, Groq falls back to a
+            # default too small for the system prompt's "be thorough" rule
+            # once a topic has enough real source material to draw on --
+            # confirmed via a real failure ("max completion tokens reached
+            # before generating a valid document", a 400 from Groq's
+            # server-side JSON-mode validator) on a library-hours question
+            # after the crawler (app/ingestion/crawler.py) added substantial
+            # real library content that hadn't existed before. 2048 is
+            # comfortably above any answer this prompt should produce while
+            # still bounding worst-case cost/latency per request.
             response = await self._client.chat.completions.create(  # type: ignore[call-overload]
                 messages=messages,
                 model=model or settings.groq_model,
                 temperature=temperature,
+                max_completion_tokens=max_completion_tokens,
                 response_format={"type": "json_object"},
             )
         except Exception as exc:  # noqa: BLE001 - surfaced as a domain error the caller can degrade on
