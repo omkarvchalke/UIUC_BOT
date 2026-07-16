@@ -1,6 +1,7 @@
 import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 
 import httpx
@@ -11,6 +12,9 @@ from app.ingestion.chunking import ChunkerConfig, RecursiveCharacterChunker
 from app.ingestion.extracted_document import ExtractedDocument
 from app.ingestion.fetch import FetchError, build_client, fetch_url
 from app.ingestion.html_loader import parse_html
+from app.ingestion.metadata.audience import infer_audience
+from app.ingestion.metadata.document_type import classify_document_type
+from app.ingestion.metadata.keywords import extract_keywords
 from app.ingestion.pdf_loader import parse_pdf
 from app.ingestion.sources import SOURCES, SourceConfig
 from app.models.document import SourceType
@@ -76,17 +80,35 @@ class IngestionService:
 
         existing = await self._repository.get_by_url(source.url)
         if existing is not None and existing.content_hash == content_hash:
+            # Still worth recording that this URL was checked, even though
+            # its content didn't change -- see incremental crawling
+            # (scripts/run_crawl.py --incremental), which uses
+            # last_crawled_at to decide whether a URL is due for a
+            # conditional-GET recheck at all.
+            await self._repository.touch_last_crawled(existing.id)
             logger.info("ingestion_source_unchanged", url=source.url)
             return IngestResult(url=source.url, status="skipped")
 
+        title = extracted.title or source.fallback_title
+        # Computed fresh from this fetch's own parsed content every time,
+        # for both the manifest and crawler-discovered paths -- Crawler's
+        # own parse (at discovery time) doesn't carry through to here (only
+        # url/department/topic/source_type/fallback_title/student_types do,
+        # same as before this phase), and re-deriving from the text
+        # actually being persisted is more reliable than trusting a value
+        # computed against a possibly-earlier fetch of the same page.
         document = await self._repository.upsert_document(
             url=source.url,
-            title=extracted.title or source.fallback_title,
+            title=title,
             department=source.department,
             topic=source.topic,
             source_type=source.source_type,
             student_types=source.student_types,
+            audience=infer_audience(source.url, source.department),
+            document_type=classify_document_type(source.url, title, extracted.text),
+            keywords=tuple(extract_keywords(extracted.text)),
             last_updated=extracted.last_updated,
+            last_crawled_at=datetime.now(UTC),
             content_hash=content_hash,
         )
 

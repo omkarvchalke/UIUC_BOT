@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ingestion.sources import SourceConfig
 from app.models.conversation_session import StudentType
-from app.models.document import Document, SourceType, Topic
+from app.models.document import Document, DocumentType, SourceType, Topic
 from app.repositories.document_repository import DocumentRepository
 from app.services.ingestion_service import IngestionService
 from tests.ingestion.pdf_helpers import make_pdf_bytes
@@ -148,6 +148,47 @@ async def test_ingest_source_writes_a_version_row_only_when_content_changes(
         # its current content.
         assert versions[0].content_hash == original_content_hash
         assert versions[0].title == original_title
+
+
+async def test_ingest_source_populates_document_type_keywords_audience_and_last_crawled_at(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+
+        async with _mock_client(_HTML_V1.encode()) as client:
+            await service.ingest_source(_source(), http_client=client)
+
+        document = await _get_with_chunks(repository, _source().url)
+        # PROGRAM_DESCRIPTION: neither the URL nor the title/body of
+        # _HTML_V1 matches any of classify_document_type's more specific
+        # rules -- see test_document_type.py for the rule-by-rule cases.
+        assert document.document_type is DocumentType.PROGRAM_DESCRIPTION
+        assert len(document.keywords) > 0
+        assert document.audience != []
+        assert document.last_crawled_at is not None
+
+
+async def test_ingest_source_updates_last_crawled_at_even_when_content_is_unchanged(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+
+        async with _mock_client(_HTML_V1.encode()) as client:
+            await service.ingest_source(_source(), http_client=client)
+        first_crawled_at = (await _get_with_chunks(repository, _source().url)).last_crawled_at
+        assert first_crawled_at is not None
+
+        async with _mock_client(_HTML_V1.encode()) as client:
+            result = await service.ingest_source(_source(), http_client=client)
+
+        assert result.status == "skipped"
+        second_crawled_at = (await _get_with_chunks(repository, _source().url)).last_crawled_at
+        assert second_crawled_at is not None
+        assert second_crawled_at >= first_crawled_at
 
 
 async def test_ingest_source_handles_pdf_sources(

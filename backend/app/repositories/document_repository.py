@@ -1,12 +1,20 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.conversation_session import StudentType
-from app.models.document import Document, DocumentChunk, DocumentVersion, SourceType, Topic
+from app.models.document import (
+    Audience,
+    Document,
+    DocumentChunk,
+    DocumentType,
+    DocumentVersion,
+    SourceType,
+    Topic,
+)
 
 
 class DocumentRepository:
@@ -49,6 +57,10 @@ class DocumentRepository:
         student_types: tuple[StudentType, ...],
         last_updated: datetime | None,
         content_hash: str,
+        audience: tuple[Audience, ...] = (),
+        document_type: DocumentType | None = None,
+        keywords: tuple[str, ...] = (),
+        last_crawled_at: datetime | None = None,
     ) -> Document:
         document = await self.get_by_url(url)
         if document is None:
@@ -59,7 +71,11 @@ class DocumentRepository:
                 topic=topic,
                 source_type=source_type,
                 student_types=list(student_types),
+                audience=list(audience),
+                document_type=document_type,
+                keywords=list(keywords),
                 last_updated=last_updated,
+                last_crawled_at=last_crawled_at,
                 content_hash=content_hash,
             )
             self._db.add(document)
@@ -83,12 +99,27 @@ class DocumentRepository:
             document.topic = topic
             document.source_type = source_type
             document.student_types = list(student_types)
+            document.audience = list(audience)
+            document.document_type = document_type
+            document.keywords = list(keywords)
             document.last_updated = last_updated
+            document.last_crawled_at = last_crawled_at
             document.content_hash = content_hash
 
         await self._db.flush()
         await self._db.refresh(document)
         return document
+
+    async def touch_last_crawled(self, document_id: uuid.UUID) -> None:
+        """Records that a document's URL was just checked, without any
+        content change -- used by the unchanged-content skip path in
+        IngestionService and by incremental crawling (scripts/run_crawl.py
+        --incremental) to know which URLs are due for a recheck."""
+        document = await self.get_by_id(document_id)
+        if document is None:
+            return
+        document.last_crawled_at = datetime.now(UTC)
+        await self._db.commit()
 
     async def list_versions(self, document_id: uuid.UUID) -> list[DocumentVersion]:
         result = await self._db.execute(
