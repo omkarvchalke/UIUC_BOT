@@ -78,9 +78,7 @@ async def test_greeting_returns_canned_response_without_retrieval(
         session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
         graph = _build_test_graph(session, test_vector_repository, test_checkpointer)
 
-        result = await graph.ainvoke(
-            turn_input(session_id, "hello"), config=config_for(session_id)
-        )
+        result = await graph.ainvoke(turn_input(session_id, "hello"), config=config_for(session_id))
 
     assert result["intent"] == "greeting"
     assert "IlliniGuide" in result["answer"]
@@ -157,21 +155,22 @@ async def test_full_question_flow_returns_grounded_answer_with_citations(
     assert result["citations"][0]["url"] == "https://example.illinois.edu/housing"
 
 
-async def test_retrieval_is_not_broken_by_wrong_topic_classification(
+async def test_retrieval_falls_back_when_topic_classification_is_wrong(
     db_session_factory: async_sessionmaker[AsyncSession],
     test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     """Regression test for a real bug: the topic classifier confidently (0.65)
     misclassified "How do I apply for OPT?" as "admissions" purely from
-    "apply"/"application" word overlap, and when topic was used as a hard
-    Qdrant filter, that wrong classification returned zero results even
-    though hybrid search with no topic filter ranked the real OPT content
-    #1. Uses a stub classifier that always returns the wrong topic with high
-    confidence, so this doesn't depend on the embedding model's specific
-    behavior staying the same -- it proves the architectural invariant
-    (topic never gates retrieval) directly, regardless of how good or bad
-    classification is.
+    "apply"/"application" word overlap. topic *is* now used as a Qdrant
+    filter (app/graph/nodes.py's retrieve node), but only provisionally --
+    a topic-filtered result count below _MIN_TOPIC_FILTERED_RESULTS falls
+    back to an unfiltered search, so this wrong classification still finds
+    the real OPT content instead of returning nothing. Uses a stub
+    classifier that always returns the wrong topic with high confidence, so
+    this doesn't depend on the embedding model's specific behavior staying
+    the same -- it proves the fallback directly, regardless of how good or
+    bad classification is.
     """
 
     class AlwaysWrongTopicClassifier:
@@ -200,6 +199,67 @@ async def test_retrieval_is_not_broken_by_wrong_topic_classification(
     assert result["grounded"] is True
     assert len(result["citations"]) >= 1
     assert result["citations"][0]["url"] == "https://example.illinois.edu/opt"
+
+
+async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_vector_repository: VectorRepository,
+    test_checkpointer: AsyncPostgresSaver,
+) -> None:
+    """Happy-path counterpart to the fallback test above: when the
+    topic-filtered corpus has enough matching content
+    (>= _MIN_TOPIC_FILTERED_RESULTS), the filter is trusted and applied --
+    proven here by seeding an OPT document that shares heavy keyword
+    overlap ("practical training", "F-1 students", "work authorization")
+    with a CPT query, then asserting it's excluded from citations rather
+    than sneaking in via BM25/semantic overlap the way it would without a
+    topic filter.
+    """
+
+    class AlwaysCptTopicClassifier:
+        def classify(self, message: str) -> TopicClassification:
+            return TopicClassification(topic=Topic.CPT, confidence=0.99)
+
+    async with db_session_factory() as session:
+        for i in range(3):
+            await _seed_and_index(
+                session,
+                test_vector_repository,
+                url=f"https://example.illinois.edu/cpt-{i}",
+                title="Curricular Practical Training",
+                chunk_texts=[
+                    "Curricular Practical Training (CPT) requires an offer letter and "
+                    "academic advisor approval before F-1 students may begin work "
+                    "authorization for training tied to their curriculum."
+                ],
+                topic=Topic.CPT,
+            )
+        await _seed_and_index(
+            session,
+            test_vector_repository,
+            url="https://example.illinois.edu/opt",
+            title="Optional Practical Training",
+            chunk_texts=[
+                "Optional Practical Training (OPT) is practical training work "
+                "authorization available to F-1 students after graduation."
+            ],
+            topic=Topic.OPT,
+        )
+        deps = _build_deps(session, test_vector_repository)
+        deps.topic_classifier = AlwaysCptTopicClassifier()  # type: ignore[assignment]
+        graph = build_graph(deps, checkpointer=test_checkpointer)
+        session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
+
+        result = await graph.ainvoke(
+            turn_input(session_id, "What do I need for CPT work authorization?"),
+            config=config_for(session_id),
+        )
+
+    assert result["topic"] is Topic.CPT
+    citation_urls = {citation["url"] for citation in result["citations"]}
+    assert len(citation_urls) >= 3
+    assert "https://example.illinois.edu/opt" not in citation_urls
+    assert all(citation["topic"] == Topic.CPT.value for citation in result["citations"])
 
 
 async def test_checkpointer_persists_messages_across_turns(

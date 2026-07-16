@@ -151,42 +151,63 @@ def make_clarification_node() -> Node:
 def make_metadata_filter_node() -> Node:
     async def metadata_filter(state: GraphState) -> dict[str, Any]:
         # A named stage per the spec's graph, even though today it's a
-        # pass-through: student_type already sits in state exactly as the
-        # retrieve node needs it. topic is deliberately *not* forwarded as a
-        # hard filter (see retrieve node) -- classification confidence isn't
-        # reliable enough to gate retrieval on without risking false
-        # negatives, so it's used only for the clarification decision. Kept
-        # as its own node so this decision, and any future filter rule, has
-        # an obvious home separate from the retrieval call itself.
+        # pass-through: student_type and topic both already sit in state
+        # exactly as the retrieve node needs them. Kept as its own node so
+        # any future filter rule has an obvious home separate from the
+        # retrieval call itself.
         return {}
 
     return metadata_filter
+
+
+# Below this many topic-filtered results, treat the classifier's topic guess
+# as more likely wrong than the corpus actually being that thin, and retry
+# unfiltered rather than surface a false "nothing found." Chosen to be
+# clearly below the reranker's input size (8, see rerank node) -- a
+# genuinely on-topic query should comfortably clear this from a corpus with
+# real per-topic coverage (see test_sources.py's per-topic coverage check).
+_MIN_TOPIC_FILTERED_RESULTS = 3
 
 
 def make_retrieve_node(deps: GraphDependencies) -> Node:
     async def retrieve(state: GraphState) -> dict[str, Any]:
         query = _latest_human_message(state)
         topic = state.get("topic")
-        # topic is deliberately NOT passed as a Qdrant filter here (see
-        # metadata_filter's docstring): the embedding-based classifier is
-        # noisy enough that a wrong call turns a hard filter into zero
-        # results even when hybrid search alone finds the right content
-        # perfectly. Concretely: "How do I apply for OPT?" classified as
-        # "admissions" (0.65 confidence, above threshold) because of
-        # "apply"/"application" overlap with the admissions topic
-        # description, and filtering retrieval to topic=admissions returned
-        # nothing -- while the same query with no topic filter ranked the
-        # real OPT page #1-2. student_type stays a hard filter because it
-        # comes from the verified session profile, not a classifier guess.
-        results = await deps.hybrid_retriever.search(
-            query,
-            limit=20,
-            student_type=state.get("student_type"),
-        )
+        student_type = state.get("student_type")
+
+        results: list[RetrievedChunk] = []
+        topic_filter_applied = False
+        if topic is not None:
+            results = await deps.hybrid_retriever.search(
+                query, limit=20, topic=topic, student_type=student_type
+            )
+            topic_filter_applied = True
+
+        # Fallback case, and the reason topic isn't just always used as a
+        # hard filter: "How do I apply for OPT?" classifies as "admissions"
+        # (0.65 confidence, above the clarification threshold) purely from
+        # "apply"/"application" word overlap with the admissions topic
+        # description, and filtering retrieval to topic=admissions returns
+        # nothing -- while the same query with no topic filter ranks the
+        # real OPT page #1-2. A well-separated topic (e.g. ISSS/CPT) still
+        # gets the precision win of a narrowed candidate set; a
+        # misclassified one degrades to today's unfiltered behavior instead
+        # of a dead end. student_type stays an unconditional hard filter
+        # because it comes from the verified session profile, not a
+        # classifier guess.
+        if len(results) < _MIN_TOPIC_FILTERED_RESULTS:
+            fallback_results = await deps.hybrid_retriever.search(
+                query, limit=20, student_type=student_type
+            )
+            if len(fallback_results) > len(results):
+                results = fallback_results
+                topic_filter_applied = False
+
         logger.info(
             "graph_retrieve",
             session_id=state["session_id"],
             topic=topic.value if topic else None,
+            topic_filter_applied=topic_filter_applied,
             result_count=len(results),
         )
         return {"retrieved_chunks": [_to_chunk_state(chunk) for chunk in results]}
@@ -206,9 +227,7 @@ def make_reranker_node(deps: GraphDependencies) -> Node:
         # context window has plenty of headroom for 8 short-to-medium
         # chunks).
         reranked = deps.reranker.rerank(query, candidates, top_k=8)
-        return {
-            "reranked_chunks": [{**chunk, "rerank_score": score} for chunk, score in reranked]
-        }
+        return {"reranked_chunks": [{**chunk, "rerank_score": score} for chunk, score in reranked]}
 
     return rerank
 
