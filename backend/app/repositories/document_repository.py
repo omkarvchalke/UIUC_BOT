@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.conversation_session import StudentType
-from app.models.document import Document, DocumentChunk, SourceType, Topic
+from app.models.document import Document, DocumentChunk, DocumentVersion, SourceType, Topic
 
 
 class DocumentRepository:
@@ -64,6 +64,20 @@ class DocumentRepository:
             )
             self._db.add(document)
         else:
+            # Write a version row capturing the *previous* content before
+            # overwriting -- only when the content actually changed, so a
+            # document that's re-ingested unchanged (the common case)
+            # never accumulates version rows. This is an audit trail, not
+            # a duplicate of current content: it's written pre-overwrite,
+            # so it always lags one step behind Document itself.
+            if document.content_hash != content_hash:
+                self._db.add(
+                    DocumentVersion(
+                        document_id=document.id,
+                        content_hash=document.content_hash,
+                        title=document.title,
+                    )
+                )
             document.title = title
             document.department = department
             document.topic = topic
@@ -75,6 +89,14 @@ class DocumentRepository:
         await self._db.flush()
         await self._db.refresh(document)
         return document
+
+    async def list_versions(self, document_id: uuid.UUID) -> list[DocumentVersion]:
+        result = await self._db.execute(
+            select(DocumentVersion)
+            .where(DocumentVersion.document_id == document_id)
+            .order_by(DocumentVersion.captured_at)
+        )
+        return list(result.scalars().all())
 
     async def replace_chunks(self, document_id: uuid.UUID, chunk_texts: list[str]) -> None:
         await self._db.execute(

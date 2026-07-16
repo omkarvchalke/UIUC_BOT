@@ -111,6 +111,45 @@ async def test_ingest_source_updates_and_replaces_chunks_when_content_changes(
         assert original_chunk_ids.isdisjoint(updated_chunk_ids)
 
 
+async def test_ingest_source_writes_a_version_row_only_when_content_changes(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+
+        async with _mock_client(_HTML_V1.encode()) as client:
+            await service.ingest_source(_source(), http_client=client)
+        original = await _get_with_chunks(repository, _source().url)
+        # Captured as plain values, not read back off `original` later --
+        # `original` is a live, session-identity-mapped ORM object, so its
+        # attributes reflect whatever the row *currently* looks like, not
+        # a frozen snapshot from this point in time.
+        original_id = original.id
+        original_content_hash = original.content_hash
+        original_title = original.title
+        # No prior version to preserve on first ingestion -- this is a
+        # brand-new document, not a content change.
+        assert await repository.list_versions(original_id) == []
+
+        # Re-ingesting the exact same content is a no-op (status="skipped"
+        # -- see test_ingest_source_skips_when_content_unchanged), so it
+        # must not accumulate a version row either.
+        async with _mock_client(_HTML_V1.encode()) as client:
+            await service.ingest_source(_source(), http_client=client)
+        assert await repository.list_versions(original_id) == []
+
+        async with _mock_client(_HTML_V2.encode()) as client:
+            await service.ingest_source(_source(), http_client=client)
+
+        versions = await repository.list_versions(original_id)
+        assert len(versions) == 1
+        # The version row captures what the document *used to* say, not
+        # its current content.
+        assert versions[0].content_hash == original_content_hash
+        assert versions[0].title == original_title
+
+
 async def test_ingest_source_handles_pdf_sources(
     db_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
