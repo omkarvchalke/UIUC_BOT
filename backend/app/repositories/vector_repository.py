@@ -76,8 +76,14 @@ class VectorRepository:
     ) -> models.Filter | None:
         must: list[models.Condition] = []
         if topic is not None:
+            # str(), not .value: Topic is a StrEnum, so this is identical
+            # output for a real Topic instance, but also safe if a plain
+            # str with the same value ever reaches here -- see the
+            # identical comment in app/graph/nodes.py for the real crash
+            # that motivated this pattern (a checkpoint-restored Topic
+            # round-tripping through JSON and coming back a plain str).
             must.append(
-                models.FieldCondition(key="topic", match=models.MatchValue(value=topic.value))
+                models.FieldCondition(key="topic", match=models.MatchValue(value=str(topic)))
             )
 
         should: list[models.Condition] = []
