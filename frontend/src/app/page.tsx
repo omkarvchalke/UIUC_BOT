@@ -8,6 +8,17 @@ import { ChatWindow } from "@/components/chat/ChatWindow";
 import { StudentTypeSelector } from "@/components/chat/StudentTypeSelector";
 import { SuggestedQuestions } from "@/components/chat/SuggestedQuestions";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChat } from "@/hooks/useChat";
@@ -22,6 +33,7 @@ export default function ChatPage() {
     isStarting,
     error: sessionError,
     startSession,
+    retry: retrySession,
     resetSession,
   } = useSession();
   const {
@@ -55,16 +67,41 @@ export default function ChatPage() {
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {sessionId && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleNewConversation}
-              aria-label="Start a new conversation"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </Button>
-          )}
+          {sessionId &&
+            (messages.length > 0 ? (
+              <AlertDialog>
+                <AlertDialogTrigger
+                  render={
+                    <Button variant="ghost" size="icon" aria-label="Start a new conversation" />
+                  }
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Start a new conversation?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This clears your current conversation. It can&apos;t be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleNewConversation}>
+                      Start new
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleNewConversation}
+                aria-label="Start a new conversation"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            ))}
           <Button
             variant="ghost"
             size="icon"
@@ -88,24 +125,36 @@ export default function ChatPage() {
 
       <main className="flex flex-1 flex-col overflow-hidden">
         {!isReady ? (
-          <div className="flex flex-1 items-center justify-center p-4">
+          <div className="flex flex-1 justify-center p-4 pt-16 sm:pt-24">
             <div className="w-full max-w-lg space-y-3">
               <Skeleton className="mx-auto h-6 w-2/3" />
               <Skeleton className="h-24 w-full" />
             </div>
           </div>
         ) : !sessionId ? (
-          <div className="flex flex-1 items-center justify-center py-10">
+          <div className="flex flex-1 justify-center px-4 pt-16 pb-10 sm:pt-24">
             <div className="flex flex-col items-center gap-3">
               <StudentTypeSelector onSelect={startSession} isLoading={isStarting} />
-              {sessionError && <p className="text-destructive text-xs">{sessionError}</p>}
+              {sessionError && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <p className="text-destructive text-xs">{sessionError}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void retrySession()}
+                    disabled={isStarting}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         ) : (
           <>
             <div className="min-h-0 flex-1">
               {messages.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center gap-6 px-4 text-center">
+                <div className="flex flex-col items-center gap-6 px-4 pt-16 text-center sm:pt-24">
                   <div className="space-y-1.5">
                     <h2 className="font-heading text-xl font-bold tracking-tight uppercase">
                       What can I help you with?
@@ -127,7 +176,7 @@ export default function ChatPage() {
             </div>
             <div className="border-t px-4 py-4">
               {chatError && (
-                <p className="text-destructive mx-auto mb-2 max-w-2xl text-center text-xs">
+                <p className="text-destructive mx-auto mb-2 max-w-3xl text-center text-xs">
                   {chatError}
                 </p>
               )}

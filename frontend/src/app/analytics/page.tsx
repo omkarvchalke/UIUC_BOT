@@ -40,7 +40,7 @@ interface StatTileProps {
 
 function StatTile({ label, value }: StatTileProps) {
   return (
-    <Card size="sm">
+    <Card size="sm" className="brutal-border brutal-shadow-sm">
       <CardContent>
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           {label}
@@ -109,6 +109,7 @@ export default function AnalyticsPage() {
               key={preset}
               variant={days === preset ? "default" : "outline"}
               size="sm"
+              className="brutal-border brutal-press"
               onClick={() => setDays(preset)}
             >
               {preset}d
@@ -138,7 +139,7 @@ export default function AnalyticsPage() {
             <StatTile label="Corpus Size" value={String(summary.corpus_document_count)} />
           </div>
 
-          <Card>
+          <Card className="brutal-border brutal-shadow">
             <CardHeader>
               <CardTitle>Topic Distribution</CardTitle>
             </CardHeader>
@@ -160,7 +161,7 @@ export default function AnalyticsPage() {
           </Card>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Card>
+            <Card className="brutal-border brutal-shadow">
               <CardHeader>
                 <CardTitle>Feedback</CardTitle>
               </CardHeader>
@@ -171,7 +172,7 @@ export default function AnalyticsPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="brutal-border brutal-shadow">
               <CardHeader>
                 <CardTitle>Latency</CardTitle>
               </CardHeader>

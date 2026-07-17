@@ -146,4 +146,53 @@ describe("MessageBubble", () => {
 
     expect(screen.queryByText(/Topic:/)).not.toBeInTheDocument();
   });
+
+  it("shows a copy button for a normal assistant answer even without a feedback handler", () => {
+    render(<MessageBubble message={baseMessage()} />);
+
+    expect(screen.getByRole("button", { name: /copy answer/i })).toBeInTheDocument();
+  });
+
+  it("does not show a copy button on a clarification message", () => {
+    render(<MessageBubble message={baseMessage({ needsClarification: true })} />);
+
+    expect(screen.queryByRole("button", { name: /copy answer/i })).not.toBeInTheDocument();
+  });
+
+  it("never shows a copy button for the user's own message", () => {
+    render(<MessageBubble message={baseMessage({ role: "user" })} />);
+
+    expect(screen.queryByRole("button", { name: /copy answer/i })).not.toBeInTheDocument();
+  });
+
+  it("copies the answer text to the clipboard and shows a confirmation", async () => {
+    // userEvent.setup() installs its own Clipboard API stub on navigator --
+    // defining the spy afterward, not before, so it isn't clobbered by that
+    // stub.
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(<MessageBubble message={baseMessage({ content: "Here's the answer." })} />);
+
+    await user.click(screen.getByRole("button", { name: /copy answer/i }));
+
+    expect(writeText).toHaveBeenCalledWith("Here's the answer.");
+    expect(screen.getByRole("button", { name: /^copied$/i })).toBeInTheDocument();
+  });
+
+  it("highlights the answer text in the page when copied", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+    render(<MessageBubble message={baseMessage({ content: "Here's the answer." })} />);
+
+    await user.click(screen.getByRole("button", { name: /copy answer/i }));
+
+    expect(window.getSelection()?.toString()).toBe("Here's the answer.");
+  });
 });

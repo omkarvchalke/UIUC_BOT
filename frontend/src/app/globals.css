@@ -214,4 +214,68 @@
     transform: translate(4px, 4px);
     box-shadow: none;
   }
+
+  /* Minimal markdown styling for assistant chat answers -- deliberately not
+     the full @tailwindcss/typography plugin (overkill for short chat
+     replies, and its default spacing/font-size scale fights the bubble's
+     own text-sm/leading-6). Only the elements the model's answers actually
+     use: paragraphs, lists, emphasis, links, inline code, tables. */
+  .prose-chat > :not(:first-child) {
+    margin-top: 0.5em;
+  }
+  .prose-chat ul,
+  .prose-chat ol {
+    margin-left: 1.25em;
+  }
+  .prose-chat ul {
+    list-style-type: disc;
+  }
+  .prose-chat ol {
+    list-style-type: decimal;
+  }
+  .prose-chat li + li {
+    margin-top: 0.15em;
+  }
+  .prose-chat strong {
+    font-weight: 700;
+  }
+  .prose-chat a {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose-chat code {
+    /* .prose-chat only ever renders inside the assistant bubble, whose own
+       background is bg-muted -- reuse var(--background) here instead of
+       var(--muted) so inline code doesn't blend invisibly into the bubble. */
+    background-color: var(--background);
+    border-radius: 0.25em;
+    padding: 0.1em 0.35em;
+    font-size: 0.85em;
+  }
+  .prose-chat pre {
+    background-color: var(--background);
+    border-radius: 0.5em;
+    padding: 0.6em 0.8em;
+    overflow-x: auto;
+  }
+  .prose-chat pre code {
+    background-color: transparent;
+    padding: 0;
+  }
+  .prose-chat blockquote {
+    border-left: 2px solid var(--border);
+    padding-left: 0.75em;
+    color: var(--muted-foreground);
+  }
+  .prose-chat table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  .prose-chat th,
+  .prose-chat td {
+    border: 1px solid var(--border);
+    padding: 0.25em 0.5em;
+    text-align: left;
+  }
 }

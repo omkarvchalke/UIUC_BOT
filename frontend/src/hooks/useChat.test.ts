@@ -79,18 +79,24 @@ describe("useChat", () => {
     expect(result.current.messages).toHaveLength(0);
   });
 
-  it("surfaces an error and keeps the user's message on API failure", async () => {
+  it("surfaces an error and rolls back the optimistic user message on API failure", async () => {
+    // Rolling back (not leaving the user's message stuck, unanswered) is
+    // deliberate: ChatInput restores the same text into the composer for a
+    // retry, so keeping a duplicate copy in the transcript would be
+    // confusing rather than helpful.
     vi.spyOn(chatApi, "sendChatMessage").mockRejectedValue(new Error("Backend unreachable"));
 
     const { result } = renderHook(() => useChat("session-4"));
 
+    let succeeded: boolean | undefined;
     await act(async () => {
-      await result.current.sendMessage("hello");
+      succeeded = await result.current.sendMessage("hello");
     });
 
+    expect(succeeded).toBe(false);
     expect(result.current.error).toBe("Backend unreachable");
-    expect(result.current.messages).toHaveLength(1);
-    expect(result.current.messages[0].role).toBe("user");
+    expect(result.current.messages).toHaveLength(0);
+    expect(localStorage.getItem("illiniguide.history.session-4")).toBe("[]");
   });
 
   it("clearHistory empties messages and removes the localStorage entry", async () => {

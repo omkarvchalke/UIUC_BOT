@@ -11,14 +11,14 @@ interface FeedbackButtonsProps {
 export function FeedbackButtons({ feedback, onRate }: FeedbackButtonsProps) {
   if (feedback) {
     return (
-      <p className="text-muted-foreground mt-2 text-xs">
+      <p className="text-muted-foreground text-xs">
         {feedback === "helpful" ? "Thanks for the feedback!" : "Thanks -- we'll work on this."}
       </p>
     );
   }
 
   return (
-    <div className="mt-2 flex items-center gap-1">
+    <div className="flex items-center gap-1">
       <Button
         variant="ghost"
         size="icon-xs"

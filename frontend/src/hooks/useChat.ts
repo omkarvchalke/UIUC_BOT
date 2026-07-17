@@ -32,7 +32,9 @@ interface UseChatResult {
   messages: ChatMessage[];
   isSending: boolean;
   error: string | null;
-  sendMessage: (text: string) => Promise<void>;
+  // Returns whether the send succeeded, so callers (ChatInput) can decide
+  // whether to clear the composer or restore the user's text for a retry.
+  sendMessage: (text: string) => Promise<boolean>;
   clearHistory: () => void;
   submitFeedback: (messageId: string, rating: FeedbackRating) => Promise<void>;
 }
@@ -59,7 +61,7 @@ export function useChat(sessionId: string | null): UseChatResult {
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!sessionId || !trimmed || isSending) return;
+      if (!sessionId || !trimmed || isSending) return false;
 
       const userMessage: ChatMessage = {
         id: createId(),
@@ -94,8 +96,19 @@ export function useChat(sessionId: string | null): UseChatResult {
           saveHistory(sessionId, next);
           return next;
         });
+        return true;
       } catch (err) {
+        // Roll back the optimistically-added user message too -- otherwise
+        // it's stuck in the transcript unanswered with no way to retry it
+        // (the composer would have a fresh, empty retry of the same text
+        // sitting right below a "failed" copy of itself).
+        setMessages((prev) => {
+          const next = prev.filter((m) => m.id !== userMessage.id);
+          saveHistory(sessionId, next);
+          return next;
+        });
         setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        return false;
       } finally {
         setIsSending(false);
       }

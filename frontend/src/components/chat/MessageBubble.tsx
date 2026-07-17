@@ -1,7 +1,11 @@
-import { AlertTriangle, Bug, HelpCircle } from "lucide-react";
+import { AlertTriangle, Bug, Check, Copy, HelpCircle } from "lucide-react";
+import { type RefObject, useRef, useState } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { FeedbackButtons } from "@/components/chat/FeedbackButtons";
 import { SourcePanel } from "@/components/chat/SourcePanel";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, FeedbackRating } from "@/types/chat";
 
@@ -11,8 +15,64 @@ interface MessageBubbleProps {
   debugMode?: boolean;
 }
 
+// Answers may cite external source URLs -- open them in a new tab, and
+// harden against reverse-tabnabbing the same way any other external link
+// in this app would be.
+const MARKDOWN_COMPONENTS: Components = {
+  a: ({ children, ...props }) => (
+    <a {...props} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  ),
+};
+
+function CopyAnswerButton({
+  content,
+  contentRef,
+}: {
+  content: string;
+  contentRef: RefObject<HTMLElement | null>;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(content);
+    setCopied(true);
+
+    // Select the answer text in the DOM so the browser's native selection
+    // highlight shows exactly what was copied -- the same visual cue a
+    // manual select-then-copy would give.
+    const node = contentRef.current;
+    const selection = window.getSelection();
+    if (node && selection) {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    setTimeout(() => {
+      setCopied(false);
+      window.getSelection()?.removeAllRanges();
+    }, 1500);
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      onClick={handleCopy}
+      aria-label={copied ? "Copied" : "Copy answer"}
+      className="text-muted-foreground hover:text-foreground"
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </Button>
+  );
+}
+
 export function MessageBubble({ message, onRateFeedback, debugMode }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const contentRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
@@ -27,7 +87,15 @@ export function MessageBubble({ message, onRateFeedback, debugMode }: MessageBub
             : "bg-muted rounded-bl-md",
         )}
       >
-        <p className="whitespace-pre-wrap">{message.content}</p>
+        {isUser ? (
+          <p className="whitespace-pre-wrap">{message.content}</p>
+        ) : (
+          <div ref={contentRef} className="prose-chat">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        )}
 
         {!isUser && message.needsClarification && (
           <div className="text-muted-foreground mt-2 flex items-center gap-1 text-xs">
@@ -56,11 +124,16 @@ export function MessageBubble({ message, onRateFeedback, debugMode }: MessageBub
           <SourcePanel citations={message.citations} debugMode={debugMode} />
         )}
 
-        {!isUser && !message.needsClarification && onRateFeedback && (
-          <FeedbackButtons
-            feedback={message.feedback}
-            onRate={(rating) => onRateFeedback(message.id, rating)}
-          />
+        {!isUser && !message.needsClarification && (
+          <div className="mt-2 flex items-center gap-1">
+            <CopyAnswerButton content={message.content} contentRef={contentRef} />
+            {onRateFeedback && (
+              <FeedbackButtons
+                feedback={message.feedback}
+                onRate={(rating) => onRateFeedback(message.id, rating)}
+              />
+            )}
+          </div>
         )}
       </div>
     </div>

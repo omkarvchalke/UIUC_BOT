@@ -96,6 +96,28 @@ describe("useSession", () => {
     expect(result.current.sessionId).toBeNull();
   });
 
+  it("retry re-attempts startSession with the last-tried student type", async () => {
+    vi.spyOn(chatApi, "createSession")
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce(makeSessionResponse({ id: "retry-session-id", student_type: "graduate" }));
+
+    const { result } = renderHook(() => useSession());
+    await waitFor(() => expect(result.current.isReady).toBe(true));
+
+    await act(async () => {
+      await result.current.startSession("graduate");
+    });
+    expect(result.current.error).toBe("network down");
+
+    await act(async () => {
+      await result.current.retry();
+    });
+
+    expect(chatApi.createSession).toHaveBeenLastCalledWith({ student_type: "graduate" });
+    expect(result.current.sessionId).toBe("retry-session-id");
+    expect(result.current.error).toBeNull();
+  });
+
   it("resetSession clears both state and localStorage", async () => {
     localStorage.setItem("illiniguide.sessionId", "existing-session-id");
     localStorage.setItem("illiniguide.studentType", "graduate");

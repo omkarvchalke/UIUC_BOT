@@ -15,6 +15,10 @@ interface UseSessionResult {
   isStarting: boolean;
   error: string | null;
   startSession: (studentType: StudentType | null) => Promise<void>;
+  // Re-attempts startSession with whichever student type was last tried, so
+  // a failed start can be recovered from a "Retry" button instead of only a
+  // full page reload.
+  retry: () => Promise<void>;
   resetSession: () => void;
 }
 
@@ -23,6 +27,7 @@ export function useSession(): UseSessionResult {
   const [studentType, setStudentType] = useState<StudentType | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastAttemptedType, setLastAttemptedType] = useState<StudentType | null>(null);
   // Avoids a hydration mismatch: localStorage isn't available during SSR, so
   // the first client render must also report "no session yet" until this
   // effect has actually had a chance to read it.
@@ -47,6 +52,7 @@ export function useSession(): UseSessionResult {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const startSession = useCallback(async (selected: StudentType | null) => {
+    setLastAttemptedType(selected);
     setIsStarting(true);
     setError(null);
     try {
@@ -64,6 +70,11 @@ export function useSession(): UseSessionResult {
     }
   }, []);
 
+  const retry = useCallback(
+    () => startSession(lastAttemptedType),
+    [startSession, lastAttemptedType],
+  );
+
   const resetSession = useCallback(() => {
     localStorage.removeItem(SESSION_ID_KEY);
     localStorage.removeItem(STUDENT_TYPE_KEY);
@@ -78,6 +89,7 @@ export function useSession(): UseSessionResult {
     isStarting,
     error,
     startSession,
+    retry,
     resetSession,
   };
 }
