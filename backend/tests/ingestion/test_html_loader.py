@@ -147,6 +147,29 @@ def test_visually_hidden_accessibility_labels_are_stripped() -> None:
     assert "Subtitle" not in result.text
     assert "Title" not in result.text
     assert "Body" not in result.text
+
+
+def test_visually_hidden_focusable_skip_link_is_stripped() -> None:
+    # Regression test for a real bug found live: after the exact-token
+    # ".visually-hidden" fix above, a real answer still leaked "Skip to
+    # main content" -- a sitewide skip-navigation link whose class is
+    # "visually-hidden-focusable skip-link ..." (visible only when
+    # keyboard-focused), a real, common accessibility-utility variant that
+    # an exact class-token match doesn't catch.
+    html = """
+    <html><body>
+        <div class="visually-hidden-focusable skip-link p-3 container">
+            <a href="#main-content">Skip to main content</a>
+        </div>
+        <main>
+            <h1>Campus Recreation</h1>
+            <p>The ARC offers a climbing wall and an indoor pool.</p>
+        </main>
+    </body></html>
+    """
+    result = parse_html(html, base_url=_BASE_URL)
+    assert "climbing wall and an indoor pool" in result.text
+    assert "Skip to main content" not in result.text
     assert "DTD HTML" not in result.text
     assert all("DTD HTML" not in section.text for section in result.sections)
 

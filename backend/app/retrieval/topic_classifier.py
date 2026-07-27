@@ -42,17 +42,28 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # refund options for overpayment?" scored 0.519 (below financial_aid's
     # closest competitor, health_insurance's "waiving/opting out" phrasing
     # below) without it.
+    # "buying textbooks" deliberately added too: a re-test-all-cases sweep
+    # found "Where do I buy textbooks?" had regressed to Topic.REGISTRATION
+    # (0.572 vs financial_aid's 0.564) after other topics' descriptions
+    # below got more specific and narrowed their generic footprint,
+    # leaving registration's short, generic description ("registering as a
+    # new or continuing student") an unintended default attractor for
+    # administrative-sounding queries it has nothing to do with.
     Topic.FINANCIAL_AID: (
         "financial aid, tuition costs, paying for college, FAFSA, "
         "the Illinois Commitment free-tuition program, i-card banking services, "
-        "billing refunds and overpayments"
+        "billing refunds and overpayments, buying textbooks"
     ),
     Topic.SCHOLARSHIPS: "scholarships and merit awards",
     # "Hire Illini" (the job board's actual name) deliberately in the
     # description text -- same bare-proper-noun pattern as Illinois
     # Commitment above: 0.558 without it, below threshold.
+    # "work hour limits" deliberately added too: same Topic.REGISTRATION
+    # attractor problem as financial_aid's "buying textbooks" above --
+    # "How many hours can I work as a student employee?" had regressed to
+    # registration (0.635 vs student_employment's 0.620).
     Topic.STUDENT_EMPLOYMENT: (
-        "on-campus jobs, work study, student employment, Hire Illini job board"
+        "on-campus jobs, work study, student employment, Hire Illini job board, work hour limits"
     ),
     # "ISSS" spelled out deliberately in the description text -- same
     # bare-acronym pattern as OPT above: 0.572 without it, below threshold.
@@ -70,13 +81,41 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     Topic.OPT: "what is OPT, optional practical training, OPT work authorization after graduation",
     Topic.TECHNOLOGY_SERVICES: "campus technology, wifi, email, IT help desk",
     Topic.LIBRARIES: "university library hours, services, and locations",
-    # "MTD bus passes/fares" deliberately in the description text -- same
-    # bare-acronym pattern as OPT/ISSS above: "How much does an MTD bus
-    # pass cost?" scored 0.498 without it, below threshold.
-    # "Willard Airport" deliberately added too: "Does UIUC have its own
-    # airport?" scored below Topic.ADMISSIONS (0.591 vs 0.556) without it.
+    # Built up incrementally from real sweep failures, each phrase added
+    # for a specific query that scored below its competitor without it:
+    # "MTD bus passes/fares" (bare-acronym pattern, same as OPT/ISSS above)
+    # for "How much does an MTD bus pass cost?"; "permit renewals, tickets
+    # and appeals" and "real-time bus tracking" for "How do I renew my
+    # parking permit?" / "...appeal a parking ticket?" / "...track the
+    # campus bus in real time?", all of which had regressed to
+    # Topic.REGISTRATION or Topic.CAMPUS_SAFETY once other topics'
+    # descriptions elsewhere got more specific and stopped acting as
+    # generic attractors themselves.
+    #
+    # That version (a comma-separated list of narrow parking/bus phrases
+    # plus a bare "Willard Airport") then regressed on a *retest* sweep: 5
+    # airport/intercity-travel queries that previously classified correctly
+    # ("...O'Hare Airport to UIUC...", "...cheapest way...from Chicago?",
+    # "...parking rates on campus?", "...shuttle to the airport?",
+    # "...Midway Airport to campus?") started losing to
+    # Topic.ADMISSIONS/DINING/HOUSING instead. Root cause: the added
+    # parking/ticket/bus-tracking phrases were specific enough to dominate
+    # the embedding, diluting the airport/intercity-travel signal down to a
+    # single under-weighted proper noun.
+    #
+    # Fixed by rewriting as one coherent sentence ("getting around campus
+    # and to/from campus: ...") instead of a growing list of bolted-on
+    # phrases, and naming Chicago/O'Hare/Midway explicitly instead of
+    # relying on "Willard Airport" alone to imply intercity travel. Verified
+    # via a comprehensive check across all 23 queries accumulated from every
+    # fix made this session (not just the 5 that regressed): 0 failures,
+    # including "Does UIUC have its own airport?" which a previous version
+    # of this description could never pass at the same time as the
+    # permit/ticket/bus-tracking queries.
     Topic.TRANSPORTATION: (
-        "parking, campus buses and MTD bus passes/fares, getting around campus, Willard Airport"
+        "getting around campus and to/from campus: parking permits and tickets, "
+        "MTD buses, Willard Airport, and traveling from Chicago or O'Hare/Midway "
+        "airports"
     ),
     # "waiving or opting out" deliberately in the description text: a real
     # 200-question sweep found "Can I opt out of the mandatory health

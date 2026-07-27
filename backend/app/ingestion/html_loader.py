@@ -65,7 +65,15 @@ def parse_html(html: str, *, base_url: str, fallback_title: str = "Untitled") ->
     # real paragraph) -- this is the source of the "Student Affairs
     # University Housing Body ..." -style prefix noise seen in several real
     # chat answers.
-    for hidden in soup.select(".visually-hidden, .sr-only"):
+    #
+    # Substring match ([class*=...]), not an exact class token
+    # (.visually-hidden): a real answer still leaked "Skip to main content"
+    # after the exact-token version of this fix, from a sitewide skip-nav
+    # link whose class is "visually-hidden-focusable skip-link ..." -- a
+    # real, common accessibility-utility variant (visible only when
+    # keyboard-focused) that ".visually-hidden" alone doesn't match since
+    # "visually-hidden-focusable" is one hyphenated token, not two classes.
+    for hidden in soup.select('[class*="visually-hidden"], [class*="sr-only"]'):
         hidden.decompose()
 
     # bs4's Comment/Doctype/CData/ProcessingInstruction/Declaration are all

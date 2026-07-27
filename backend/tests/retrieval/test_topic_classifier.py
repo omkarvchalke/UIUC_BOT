@@ -84,10 +84,85 @@ def test_classifies_refund_overpayment_question_as_financial_aid() -> None:
     assert result.confidence > 0.55
 
 
+def test_classifies_parking_permit_renewal_question_as_transportation() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("How do I renew my parking permit?")
+    assert result.topic is Topic.TRANSPORTATION
+    assert result.confidence > 0.55
+
+
+def test_classifies_parking_ticket_appeal_question_as_transportation() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("What's the process to appeal a parking ticket?")
+    assert result.topic is Topic.TRANSPORTATION
+    assert result.confidence > 0.55
+
+
+def test_classifies_realtime_bus_tracking_question_as_transportation() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("How do I track the campus bus in real time?")
+    assert result.topic is Topic.TRANSPORTATION
+    assert result.confidence > 0.55
+
+
 def test_classifies_willard_airport_question_as_transportation() -> None:
     classifier = TopicClassifier()
     result = classifier.classify("Does UIUC have its own airport?")
     assert result.topic is Topic.TRANSPORTATION
+
+
+def test_classifies_ohare_airport_question_as_transportation() -> None:
+    # Regression test for a real finding from a retest sweep: a version of
+    # Topic.TRANSPORTATION's description packed with narrow parking/ticket/
+    # bus-tracking phrases lost this query to Topic.ADMISSIONS. Fixed by
+    # rewriting the description as one coherent sentence naming Chicago/
+    # O'Hare/Midway explicitly instead of relying on "Willard Airport" alone
+    # to imply intercity travel.
+    classifier = TopicClassifier()
+    result = classifier.classify("How do I get from O'Hare Airport to UIUC without a car?")
+    assert result.topic is Topic.TRANSPORTATION
+    assert result.confidence > 0.55
+
+
+def test_classifies_cheapest_way_from_chicago_question_as_transportation() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("What is the cheapest way to get to campus from Chicago?")
+    assert result.topic is Topic.TRANSPORTATION
+    assert result.confidence > 0.55
+
+
+def test_classifies_parking_rates_question_as_transportation() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("What are the parking rates on campus?")
+    assert result.topic is Topic.TRANSPORTATION
+    assert result.confidence > 0.55
+
+
+def test_classifies_airport_shuttle_question_as_transportation() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("Does UIUC have a shuttle to the airport?")
+    assert result.topic is Topic.TRANSPORTATION
+    assert result.confidence > 0.55
+
+
+def test_classifies_midway_airport_question_as_transportation() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("What's the fastest way from Midway Airport to campus?")
+    assert result.topic is Topic.TRANSPORTATION
+    assert result.confidence > 0.55
+
+
+def test_classifies_work_hours_question_as_student_employment() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("How many hours can I work as a student employee?")
+    assert result.topic is Topic.STUDENT_EMPLOYMENT
+    assert result.confidence > 0.55
+
+
+def test_classifies_buying_textbooks_question_as_financial_aid() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("Where do I buy textbooks?")
+    assert result.topic is Topic.FINANCIAL_AID
     assert result.confidence > 0.55
 
 
