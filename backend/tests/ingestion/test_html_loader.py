@@ -40,6 +40,30 @@ def test_extracts_main_text_and_strips_boilerplate() -> None:
     assert "Copyright University of Illinois" not in result.text
 
 
+def test_html_comments_do_not_leak_into_extracted_text() -> None:
+    # Regression test for a real bug found live: bs4's Comment is a
+    # NavigableString subclass, so <!-- ... --> content (including literal
+    # markup some UIUC Drupal pages put inside template-debug comments) was
+    # showing up verbatim in ingested chunk content and from there in real
+    # chat answers.
+    html = """
+    <html><body>
+        <main>
+            <h1>Student Code</h1>
+            <!-- replace paragraph ID with an anchor ID -->
+            <!-- <details id="paragraph--1508" class="paragraph paragraph--type--accordion"> -->
+            <p>Decisions must be based on individual merit.</p>
+        </main>
+    </body></html>
+    """
+    result = parse_html(html, base_url=_BASE_URL)
+    assert "Decisions must be based on individual merit" in result.text
+    assert "paragraph--1508" not in result.text
+    assert "<details" not in result.text
+    assert "replace paragraph ID" not in result.text
+    assert all("paragraph--" not in section.text for section in result.sections)
+
+
 def test_extracts_last_updated_from_meta_tag() -> None:
     result = parse_html(_SAMPLE_HTML, base_url=_BASE_URL)
     assert result.last_updated == datetime(2026, 3, 15, 10, 0, tzinfo=UTC)
