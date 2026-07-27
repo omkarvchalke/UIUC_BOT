@@ -83,6 +83,70 @@ def test_embedded_doctype_does_not_leak_into_extracted_text() -> None:
     """
     result = parse_html(html, base_url=_BASE_URL)
     assert "Contact the IT Service Desk for help" in result.text
+
+
+def test_ilw_header_and_footer_mega_menus_are_stripped() -> None:
+    # Regression test for a real bug found live: <ilw-header>/<ilw-footer>
+    # are custom elements from UIUC's shared "Illinois Web Toolkit", used
+    # site-wide across the Student Affairs family of sites -- not real
+    # <nav>/<header>/<footer> tags, so the plain-tag noise filtering never
+    # touched them. A real document's entire first chunk was one of these
+    # menus (every nav link on the site, verbatim, including "Employment"),
+    # which is why many otherwise-unrelated pages on these sites kept
+    # scoring high for Topic.STUDENT_EMPLOYMENT in topic classification.
+    html = """
+    <html><body>
+        <ilw-header>
+            <nav slot="links"><ul><li><a href="/hours">Hours</a></li></ul></nav>
+            <ilw-header-menu>
+                <ul><li><a href="/facilities">Facilities</a></li>
+                <li><a href="/about/employment">Employment</a></li></ul>
+            </ilw-header-menu>
+        </ilw-header>
+        <main>
+            <h1>Campus Recreation</h1>
+            <p>The ARC offers a climbing wall and an indoor pool.</p>
+        </main>
+        <ilw-footer>
+            <nav slot="social"><ul><li><a href="#">Instagram</a></li></ul></nav>
+        </ilw-footer>
+    </body></html>
+    """
+    result = parse_html(html, base_url=_BASE_URL)
+    assert "climbing wall and an indoor pool" in result.text
+    assert "Employment" not in result.text
+    assert "Instagram" not in result.text
+
+
+def test_visually_hidden_accessibility_labels_are_stripped() -> None:
+    # Regression test for a real bug found live: class="visually-hidden"
+    # (and the "sr-only" convention) marks screen-reader-only accessibility
+    # labels, deliberately never shown to sighted users -- but with nothing
+    # filtering by CSS class, a Drupal "feature split" component's hidden
+    # field-name labels ("Subtitle", "Title", "Body") were leaking into
+    # extracted text ahead of the real content they labeled.
+    html = """
+    <html><body>
+        <main>
+            <div>
+                <div class="visually-hidden">Subtitle</div>
+                <div class="field__item">Employment</div>
+            </div>
+            <h2>
+                <div class="visually-hidden">Title</div>
+                Work Where You Play
+            </h2>
+            <div class="sr-only">Body</div>
+            <p>Campus Recreation is one of the largest on-campus employers.</p>
+        </main>
+    </body></html>
+    """
+    result = parse_html(html, base_url=_BASE_URL)
+    assert "Work Where You Play" in result.text
+    assert "largest on-campus employers" in result.text
+    assert "Subtitle" not in result.text
+    assert "Title" not in result.text
+    assert "Body" not in result.text
     assert "DTD HTML" not in result.text
     assert all("DTD HTML" not in section.text for section in result.sections)
 

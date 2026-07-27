@@ -8,7 +8,30 @@ from app.ingestion.cleaning import clean_text
 from app.ingestion.extracted_document import ExtractedDocument, Section
 from app.ingestion.timestamps import ensure_utc
 
-_NOISE_TAGS = ("script", "style", "nav", "footer", "header", "noscript", "svg", "form")
+_NOISE_TAGS = (
+    "script",
+    "style",
+    "nav",
+    "footer",
+    "header",
+    "noscript",
+    "svg",
+    "form",
+    # <ilw-header>/<ilw-footer>: custom elements from UIUC's shared
+    # "Illinois Web Toolkit" (cdn.toolkit.illinois.edu), used site-wide
+    # across the Student Affairs family of sites (Campus Recreation, The
+    # Career Center, University Housing, Illini Union, McKinley Health
+    # Center, ISSS, the Registrar, ...). Not real <nav>/<header> tags, so
+    # the plain-tag noise filtering above never touched them -- confirmed
+    # live, a document's *entire first chunk* was this menu (every nav
+    # link on the site, verbatim, including "Employment"), which is why so
+    # many otherwise-unrelated pages on these sites kept scoring high for
+    # Topic.STUDENT_EMPLOYMENT: this menu, not the page's real content, was
+    # dominating both its embedding and a big chunk of what actually got
+    # cited to users.
+    "ilw-header",
+    "ilw-footer",
+)
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 _LAST_UPDATED_META_NAMES = ("last-modified", "revised", "date", "dcterms.modified")
 _LAST_UPDATED_META_PROPERTIES = ("article:modified_time", "article:published_time")
@@ -29,6 +52,21 @@ def parse_html(html: str, *, base_url: str, fallback_title: str = "Untitled") ->
 
     for tag in soup(_NOISE_TAGS):
         tag.decompose()
+
+    # class="visually-hidden" (and the "sr-only" convention some other
+    # UIUC sites use): screen-reader-only accessibility labels, deliberately
+    # never shown to sighted users -- but with nothing filtering by CSS
+    # class, they were included in extracted text same as real content.
+    # Confirmed live on a Drupal "feature split" component: a sighted user
+    # sees "Employment / Work Where You Play / Campus Recreation is one of
+    # the largest on-campus employers...", but the extracted text also
+    # picked up the hidden field-name labels around it ("Subtitle" before
+    # "Employment", "Title" before "Work Where You Play", "Body" before the
+    # real paragraph) -- this is the source of the "Student Affairs
+    # University Housing Body ..." -style prefix noise seen in several real
+    # chat answers.
+    for hidden in soup.select(".visually-hidden, .sr-only"):
+        hidden.decompose()
 
     # bs4's Comment/Doctype/CData/ProcessingInstruction/Declaration are all
     # NavigableString subclasses (via the common PreformattedString base),
