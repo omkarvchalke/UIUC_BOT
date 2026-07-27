@@ -88,16 +88,16 @@ async def test_generate_deduplicates_identical_sentences_from_different_chunks()
 
 async def test_generate_only_draws_from_the_top_max_source_chunks() -> None:
     generator = ExtractiveAnswerGenerator()
-    # 4 chunks, all relevant to "parking" -- only the first 3 (the reranked
+    # 6 chunks, all relevant to "parking" -- only the first 5 (the reranked
     # order) should ever be considered.
-    chunks = [_chunk(content=f"Parking permit info, source {i}.") for i in range(4)]
+    chunks = [_chunk(content=f"Parking permit info, source {i}.") for i in range(6)]
 
     result = await generator.generate(
         "parking permit", chunks, context="", history=[], student_type=None
     )
 
     assert result.citation_indices is not None
-    assert 4 not in result.citation_indices
+    assert 6 not in result.citation_indices
 
 
 async def test_generate_falls_back_to_full_chunk_when_nothing_overlaps_the_query() -> None:

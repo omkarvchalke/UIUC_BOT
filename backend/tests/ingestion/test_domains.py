@@ -43,4 +43,4 @@ def test_expected_entry_counts() -> None:
     # a silent drop or duplicate during a future domain-file edit changes
     # one of these numbers.
     assert len(domains.ALL_SEEDS) == 38
-    assert len(domains.ALL_SOURCES) == 67
+    assert len(domains.ALL_SOURCES) == 68

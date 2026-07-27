@@ -19,11 +19,18 @@ _STOPWORDS = frozenset(
     "to of in on for and or how what when where who which i you your my me can "
     "will would should could i'm im whats what's hows how's".split()
 )
-# How many of the top reranked chunks ExtractiveAnswerGenerator draws from --
-# reranking already puts the most relevant chunks first, so this is a
-# breadth/coherence tradeoff, not a quality one: more chunks means more
-# source diversity but a longer, more list-like answer.
-_MAX_SOURCE_CHUNKS = 3
+# How many of the top reranked chunks ExtractiveAnswerGenerator draws from
+# (Settings.rerank_top_k caps reranked_chunks at 8, so this never exceeds
+# what's already been computed). Raised from 3 to 5 after a real live
+# case: "how do I get from O'Hare without a car" had the one genuinely
+# on-point chunk (Peoria Charter bus service, naming O'Hare specifically)
+# rank 4th post-rerank, behind three chunks that were topically related
+# (airport codes, driving directions, a bus-tracker app) but didn't
+# actually answer the question -- confirmed live that raising this to 5
+# surfaces it. This is a breadth/coherence tradeoff, not a pure quality
+# knob: more chunks means more source diversity but a longer, more
+# list-like answer, so don't raise it further without a reason.
+_MAX_SOURCE_CHUNKS = 5
 
 
 def _tokenize(text: str) -> set[str]:

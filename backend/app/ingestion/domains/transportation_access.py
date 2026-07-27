@@ -76,4 +76,22 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Champaign-Urbana Mass Transit District",
     ),
+    # A real user question found this a genuine gap: "how do I get from
+    # O'Hare to campus without a car, what's cheapest" came back with a
+    # driving-directions sentence and unrelated MTD/campus-shuttle content,
+    # because nothing in the corpus actually covered intercity/airport
+    # travel -- every other transportation source here is about parking or
+    # *local* Champaign-Urbana transit. ISSS's pre-arrival page is
+    # international-student-focused in its surrounding sections but this
+    # specific "Getting to Champaign-Urbana" content (Willard Airport,
+    # O'Hare/Midway, Amtrak, Peoria Charter bus/shuttle, Greyhound, taxi
+    # cost) is equally relevant to any new student flying in -- not scoped
+    # to student_types=INTERNATIONAL for that reason.
+    SourceConfig(
+        url="https://isss.illinois.edu/students/pre-arrival/",
+        department="International Student and Scholar Services",
+        topic=Topic.TRANSPORTATION,
+        source_type=SourceType.HTML,
+        fallback_title="Getting to Champaign-Urbana (Pre-Arrival)",
+    ),
 )
