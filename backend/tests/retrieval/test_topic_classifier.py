@@ -21,6 +21,18 @@ def test_classifies_clear_dining_question() -> None:
     assert result.topic is Topic.DINING
 
 
+def test_classifies_career_services_question() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("What career services does UIUC offer, like resume help?")
+    assert result.topic is Topic.CAREER_SERVICES
+
+
+def test_classifies_academic_advising_question() -> None:
+    classifier = TopicClassifier()
+    result = classifier.classify("How do I contact my academic advisor?")
+    assert result.topic is Topic.ACADEMIC_ADVISING
+
+
 def test_ambiguous_message_returns_none_topic_with_low_confidence() -> None:
     classifier = TopicClassifier(confidence_threshold=0.99)
     result = classifier.classify("hmm okay")

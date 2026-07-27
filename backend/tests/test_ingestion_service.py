@@ -1,3 +1,5 @@
+import dataclasses
+
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -111,6 +113,34 @@ async def test_ingest_source_skips_when_content_unchanged(
 
         assert first.status == "created"
         assert second.status == "skipped"
+
+
+async def test_ingest_source_reclassifies_when_only_topic_changes(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # A source-manifest edit (e.g. app/ingestion/domains/*.py reclassifying
+    # a URL's topic) must take effect even when the page's own content
+    # hasn't changed -- content_hash alone used to make this a silent
+    # no-op forever. See document_repository.upsert_document's
+    # embedded_content_hash invalidation for the Qdrant-payload half of
+    # this fix.
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+
+        async with _mock_client(_HTML_V1.encode()) as client:
+            first = await service.ingest_source(_source(), http_client=client)
+        assert first.status == "created"
+        original = await _get_with_chunks(repository, _source().url)
+        assert original.embedded_content_hash is None
+
+        reclassified = dataclasses.replace(_source(), topic=Topic.DINING)
+        async with _mock_client(_HTML_V1.encode()) as client:
+            second = await service.ingest_source(reclassified, http_client=client)
+
+        assert second.status == "updated"
+        updated = await _get_with_chunks(repository, _source().url)
+        assert updated.topic is Topic.DINING
 
 
 async def test_ingest_source_updates_and_replaces_chunks_when_content_changes(

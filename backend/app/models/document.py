@@ -34,6 +34,8 @@ class Topic(enum.StrEnum):
     COURSE_REGISTRATION = "course_registration"
     CAMPUS_SAFETY = "campus_safety"
     ACCESSIBILITY = "accessibility"
+    CAREER_SERVICES = "career_services"
+    ACADEMIC_ADVISING = "academic_advising"
 
 
 class SourceType(enum.StrEnum):

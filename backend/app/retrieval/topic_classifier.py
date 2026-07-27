@@ -62,6 +62,24 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
         "disability accommodations, accessibility services, DRES, note-taking "
         "and testing accommodations for students with disabilities"
     ),
+    # Added after a live run found "what career services does UIUC offer"
+    # misclassified as international_student_services -- with no
+    # career-specific description to embed against, "career" pulled toward
+    # whichever topic happened to be closest. Deliberately distinguished
+    # from STUDENT_EMPLOYMENT (on-campus jobs/work-study) since "career
+    # coaching" and "resume review" are a different service from "I need a
+    # job on campus," even though both live under The Career Center.
+    Topic.CAREER_SERVICES: (
+        "career services, career center, career coaching and advising, resume "
+        "and cover letter review, interview prep, job and internship search help"
+    ),
+    # Added after a live run found "how do I contact my academic advisor"
+    # misclassified as academic_calendar -- same root cause as
+    # CAREER_SERVICES above, no dedicated topic to embed against.
+    Topic.ACADEMIC_ADVISING: (
+        "academic advising, contacting or scheduling with your academic advisor, "
+        "degree planning, course selection help"
+    ),
 }
 
 

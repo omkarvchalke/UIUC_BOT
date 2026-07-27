@@ -161,4 +161,15 @@ SOURCES: tuple[SourceConfig, ...] = (
         fallback_title="The Graduate College",
         student_types=(StudentType.GRADUATE,),
     ),
+    # A live run found "how much is out-of-state tuition" got zero
+    # citations -- the financial_aid_billing domain's OSFA/Bursar sources
+    # cover aid and billing mechanics but not the actual in-state/
+    # out-of-state tuition rate figures, which live here instead.
+    SourceConfig(
+        url="https://www.admissions.illinois.edu/invest/tuition",
+        department="Undergraduate Admissions",
+        topic=Topic.FINANCIAL_AID,
+        source_type=SourceType.HTML,
+        fallback_title="Tuition (In-State & Out-of-State Rates)",
+    ),
 )

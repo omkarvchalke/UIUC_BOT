@@ -23,7 +23,7 @@ Generation, and the app never asks for personally identifiable information.
 | Frontend          | Next.js 16 (App Router), React 19, TypeScript, TailwindCSS 4, shadcn/ui (Base UI primitives) |
 | Backend           | Python, FastAPI                                     |
 | Orchestration     | LangGraph, LangChain-core                           |
-| LLM               | Groq (`llama-4-scout-17b-16e-instruct`, JSON mode)  |
+| LLM               | Groq (`llama-3.3-70b-versatile`, JSON mode)         |
 | Embeddings        | Local sentence-transformers (BAAI/bge-small-en-v1.5), CPU-only |
 | Vector database   | Qdrant                                              |
 | Relational database | PostgreSQL                                        |
@@ -296,16 +296,22 @@ fire-and-forget so a logging failure never breaks the chat response itself.
 `ExtractiveAnswerGenerator` when it isn't — local dev and most tests work without a key; only
 `POST /api/v1/chat` giving a real generated answer needs one.
 
-- **Model choice** (`Settings.groq_model`, `backend/.env` `GROQ_MODEL`): `llama-4-scout-17b-16e-instruct`,
-  not the more obvious `llama-3.3-70b-versatile` or `llama-3.1-8b-instant`. Picked by comparing
-  real per-minute rate-limit headers across candidates on this account, not published numbers --
-  what actually matters for RAG is *tokens*-per-minute, since our prompts carry several retrieved
-  chunks of context. `llama-3.1-8b-instant` looked like the obvious "more quota" choice from its
-  14,400 req/min limit, but its 6,000 TPM is actually *lower* than `llama-3.3-70b-versatile`'s
-  12,000, and it hit real `429`s plus 18-21s SDK retry backoffs running the golden-set eval
-  against it. Llama 4 Scout's 30,000 TPM (2.5x `llama-3.3-70b-versatile`) has real headroom for
-  context-heavy prompts. **Known operational risk**: this account has hit its daily token quota
-  repeatedly during development — see [docs/production-readiness.md](docs/production-readiness.md)
+- **Model choice** (`Settings.groq_model`, `backend/.env` `GROQ_MODEL`): `llama-3.3-70b-versatile`.
+  The original pick, `llama-4-scout-17b-16e-instruct`, was selected for a 30,000 TPM headroom
+  advantage but was later pulled from Groq's model catalog entirely (confirmed 2026-07-27: it
+  404s as "does not exist or you do not have access to it" on `/chat/completions`) — a reminder
+  that Groq's free-tier model lineup isn't stable long-term and `GET /openai/v1/models` is worth
+  re-checking periodically. Re-verified live against this account on the same date:
+  `llama-3.3-70b-versatile` still returns clean JSON-mode output on the first try (12,000 TPM),
+  while the other currently-available candidates (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`,
+  `qwen/qwen3.6-27b`) are reasoning models that burned the completion-token budget on internal
+  reasoning before emitting the JSON envelope, tripping Groq's server-side `json_validate_failed`
+  at the same token budget this model handled cleanly, and offer a lower 8,000 TPM besides.
+  `llama-3.1-8b-instant` remains available but was already ruled out earlier in this project: its
+  14,400 req/min limit looks like the obvious "more quota" choice, but its 6,000 TPM is actually
+  *lower* than `llama-3.3-70b-versatile`'s, and it hit real `429`s plus 18-21s SDK retry backoffs
+  running the golden-set eval. **Known operational risk**: this account has hit its daily token
+  quota repeatedly during development — see [docs/production-readiness.md](docs/production-readiness.md)
   for why a paid tier matters before any real traffic volume.
 - **Prompt** (`app/prompts/rag_system_prompt.txt`): instructs the model to answer only from the
   numbered context sections, cite inline with `[n]`, never ask for PII, and respond in a strict

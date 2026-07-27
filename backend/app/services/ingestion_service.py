@@ -109,16 +109,34 @@ class IngestionService:
             return IngestResult(url=source.url, status="failed", error="no extractable text")
 
         content_hash = hashlib.sha256(extracted.text.encode("utf-8")).hexdigest()
+        title = extracted.title or source.fallback_title
 
-        if existing is not None and existing.content_hash == content_hash:
+        # Compared alongside content_hash, not instead of it: a URL that a
+        # broad crawl discovered previously (Crawler auto-classifies topic
+        # by embedding similarity -- see topic_classifier.py) or that had a
+        # source-manifest edit (a topic/department/student_types correction
+        # in app/ingestion/domains/*.py) can have unchanged page *content*
+        # while its intended metadata has changed. Content-hash-only used
+        # to silently skip those corrections forever, since the page text
+        # itself never changes -- found via a real case: editing
+        # career_employment.py to reclassify two already-crawled URLs from
+        # Topic.ADMISSIONS to Topic.CAREER_SERVICES had zero effect until
+        # this check existed, because both pages' content hadn't changed
+        # since the original crawl.
+        metadata_unchanged = existing is not None and (
+            existing.title == title
+            and existing.department == source.department
+            and existing.topic == source.topic
+            and list(existing.student_types) == list(source.student_types)
+        )
+
+        if existing is not None and existing.content_hash == content_hash and metadata_unchanged:
             # Still worth recording that this URL was checked, even though
-            # its content didn't change (e.g. the server ignored the
+            # nothing about it changed (e.g. the server ignored the
             # conditional header above, or this was a non-incremental run).
             await self._repository.touch_last_crawled(existing.id)
             logger.info("ingestion_source_unchanged", url=source.url)
             return IngestResult(url=source.url, status="skipped")
-
-        title = extracted.title or source.fallback_title
         # Computed fresh from this fetch's own parsed content every time,
         # for both the manifest and crawler-discovered paths -- Crawler's
         # own parse (at discovery time) doesn't carry through to here (only

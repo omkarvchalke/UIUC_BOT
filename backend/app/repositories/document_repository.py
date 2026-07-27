@@ -95,6 +95,25 @@ class DocumentRepository:
                         title=document.title,
                     )
                 )
+            # embedded_content_hash is what IndexingService compares against
+            # content_hash to decide whether Qdrant needs re-indexing (see
+            # app/models/document.py) -- topic/department/student_types/
+            # audience/document_type all ride along in the Qdrant point
+            # payload too (indexing_service.py), so a metadata-only change
+            # (content_hash unchanged) has to invalidate it just like a
+            # content change does, or the stale payload in Qdrant -- which
+            # is what retrieval actually filters against -- never gets
+            # refreshed even after Postgres is corrected.
+            if (
+                document.content_hash != content_hash
+                or document.title != title
+                or document.department != department
+                or document.topic != topic
+                or list(document.student_types) != list(student_types)
+                or list(document.audience) != list(audience)
+                or document.document_type != document_type
+            ):
+                document.embedded_content_hash = None
             document.title = title
             document.department = department
             document.topic = topic
