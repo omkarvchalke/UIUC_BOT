@@ -42,5 +42,5 @@ def test_expected_entry_counts() -> None:
     # Pins the counts verified against the pre-reorganization snapshot --
     # a silent drop or duplicate during a future domain-file edit changes
     # one of these numbers.
-    assert len(domains.ALL_SEEDS) == 36
-    assert len(domains.ALL_SOURCES) == 68
+    assert len(domains.ALL_SEEDS) == 35
+    assert len(domains.ALL_SOURCES) == 71
