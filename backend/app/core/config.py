@@ -21,9 +21,6 @@ class Settings(BaseSettings):
 
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"
 
-    qdrant_url: str = "http://localhost:6333"
-    qdrant_collection_name: str = "illiniguide_documents"
-
     database_url: str = "postgresql+asyncpg://illiniguide:change-me@localhost:5432/illiniguide"
     db_pool_size: int = 5
     db_max_overflow: int = 10

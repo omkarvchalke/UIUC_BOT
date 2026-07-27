@@ -10,13 +10,10 @@ from app.ingestion.chunking import ChunkResult
 from app.main import app
 from app.models.document import SourceType, Topic
 from app.repositories.document_repository import DocumentRepository
-from app.repositories.vector_repository import VectorRepository
 from app.services.indexing_service import IndexingService
 
 
-async def _seed_and_index(
-    db_session_factory: async_sessionmaker[AsyncSession], vector_repository: VectorRepository
-) -> None:
+async def _seed_and_index(db_session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with db_session_factory() as session:
         repository = DocumentRepository(session)
         document = await repository.upsert_document(
@@ -40,13 +37,13 @@ async def _seed_and_index(
         )
         loaded_document = await repository.get_by_id(document.id)
         assert loaded_document is not None
-        await IndexingService(repository, vector_repository).index_document(loaded_document)
+        await IndexingService(repository).index_document(loaded_document)
 
 
 async def test_retrieve_endpoint_returns_ranked_results(
-    db_session_factory: async_sessionmaker[AsyncSession], test_vector_repository: VectorRepository
+    db_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    await _seed_and_index(db_session_factory, test_vector_repository)
+    await _seed_and_index(db_session_factory)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/retrieve", params={"query": "parking permit"})
@@ -68,9 +65,9 @@ async def test_retrieve_endpoint_requires_query_param() -> None:
 
 
 async def test_retrieve_endpoint_respects_topic_filter(
-    db_session_factory: async_sessionmaker[AsyncSession], test_vector_repository: VectorRepository
+    db_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    await _seed_and_index(db_session_factory, test_vector_repository)
+    await _seed_and_index(db_session_factory)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(
@@ -82,9 +79,9 @@ async def test_retrieve_endpoint_respects_topic_filter(
 
 
 async def test_retrieve_endpoint_respects_audience_and_document_type_filters(
-    db_session_factory: async_sessionmaker[AsyncSession], test_vector_repository: VectorRepository
+    db_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    await _seed_and_index(db_session_factory, test_vector_repository)
+    await _seed_and_index(db_session_factory)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(

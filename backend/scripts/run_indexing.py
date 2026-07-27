@@ -1,4 +1,4 @@
-"""Embed ingested documents and upsert them into Qdrant.
+"""Embed ingested documents and write the vectors onto DocumentChunk.embedding.
 
 Usage (from backend/):
     uv run python -m scripts.run_indexing
@@ -9,7 +9,6 @@ import asyncio
 from app.core.logging import configure_logging, get_logger
 from app.database.session import get_session_factory
 from app.repositories.document_repository import DocumentRepository
-from app.repositories.vector_repository import VectorRepository
 from app.services.indexing_service import IndexingService, IndexResult
 
 configure_logging()
@@ -19,7 +18,7 @@ logger = get_logger(__name__)
 async def main() -> list[IndexResult]:
     session_factory = get_session_factory()
     async with session_factory() as session:
-        service = IndexingService(DocumentRepository(session), VectorRepository())
+        service = IndexingService(DocumentRepository(session))
         results = await service.index_all()
 
     counts: dict[str, int] = {}

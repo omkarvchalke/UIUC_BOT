@@ -11,7 +11,11 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        # pgvector/pgvector, not plain postgres: bundles the pgvector
+        # extension document_chunks.embedding needs (CREATE EXTENSION
+        # vector) -- see docker-compose.yml for the same swap and why (this
+        # used to be a separate qdrant service here).
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: illiniguide
           POSTGRES_PASSWORD: change-me
@@ -23,14 +27,9 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      qdrant:
-        image: qdrant/qdrant:latest
-        ports:
-          - 6333:6333
 
     env:
       DATABASE_URL: postgresql+asyncpg://illiniguide:change-me@localhost:5432/illiniguide
-      QDRANT_URL: http://localhost:6333
       # Deliberately unset: the 4 live-Groq tests in tests/llm/ skip
       # themselves without a real key rather than failing, so CI stays
       # green without needing a secret provisioned.

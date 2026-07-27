@@ -1,6 +1,6 @@
 # Production overlay: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
 #
-# docker-compose.override.yml (which publishes Postgres/Qdrant ports to the
+# docker-compose.override.yml (which publishes Postgres's port to the
 # host for local dev) is only auto-loaded by plain `docker compose up` --
 # naming -f files explicitly like this excludes it, so in production the
 # data stores are reachable only from other containers on the Docker
@@ -21,14 +21,6 @@ x-logging: &default-logging
 
 services:
   postgres:
-    logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 1g
-
-  qdrant:
     logging: *default-logging
     deploy:
       resources:

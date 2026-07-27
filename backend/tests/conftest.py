@@ -12,14 +12,11 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from app.api.dependencies import get_checkpointer, get_vector_repository
+from app.api.dependencies import get_checkpointer
 from app.core.config import get_settings
 from app.database.session import get_db_session
 from app.graph.checkpointer import build_checkpointer
 from app.main import app
-from app.repositories.vector_repository import VectorRepository
-
-_TEST_QDRANT_COLLECTION = "illiniguide_documents_test"
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -71,28 +68,6 @@ async def clean_tables(test_engine: AsyncEngine) -> AsyncGenerator[None]:
 
 
 @pytest_asyncio.fixture
-async def test_vector_repository() -> AsyncGenerator[VectorRepository]:
-    # A dedicated collection, never the real configured one -- the dev
-    # Qdrant instance already holds real indexed UIUC content from manual
-    # runs of scripts/run_indexing.py, and tests must not read or clobber it.
-    repository = VectorRepository(collection_name=_TEST_QDRANT_COLLECTION)
-    await repository.ensure_collection()
-    try:
-        yield repository
-    finally:
-        await repository.delete_collection()
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def override_vector_repository(
-    test_vector_repository: VectorRepository,
-) -> AsyncGenerator[None]:
-    app.dependency_overrides[get_vector_repository] = lambda: test_vector_repository
-    yield
-    app.dependency_overrides.pop(get_vector_repository, None)
-
-
-@pytest_asyncio.fixture
 async def test_checkpointer() -> AsyncGenerator[AsyncPostgresSaver]:
     # Function-scoped, not session-scoped: AsyncPostgresSaver holds one
     # persistent psycopg connection (and an asyncio.Lock bound to whatever
@@ -111,7 +86,7 @@ async def override_checkpointer(test_checkpointer: AsyncPostgresSaver) -> AsyncG
     # checkpointer lives on app.state, set up during the FastAPI lifespan,
     # which the AsyncClient(transport=ASGITransport(...)) pattern used
     # throughout these tests never triggers, so override the dependency
-    # directly instead (same as get_vector_repository above). Every other
+    # directly instead (same as get_db_session above). Every other
     # test would otherwise pay for a real Postgres connection it never uses.
     app.dependency_overrides[get_checkpointer] = lambda: test_checkpointer
     yield

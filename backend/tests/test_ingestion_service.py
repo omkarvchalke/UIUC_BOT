@@ -121,9 +121,7 @@ async def test_ingest_source_reclassifies_when_only_topic_changes(
     # A source-manifest edit (e.g. app/ingestion/domains/*.py reclassifying
     # a URL's topic) must take effect even when the page's own content
     # hasn't changed -- content_hash alone used to make this a silent
-    # no-op forever. See document_repository.upsert_document's
-    # embedded_content_hash invalidation for the Qdrant-payload half of
-    # this fix.
+    # no-op forever.
     async with db_session_factory() as session:
         repository = DocumentRepository(session)
         service = IngestionService(repository)

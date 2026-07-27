@@ -25,7 +25,7 @@ Generation, and the app never asks for personally identifiable information.
 | Orchestration     | LangGraph, LangChain-core                           |
 | LLM               | Groq (`llama-3.3-70b-versatile`, JSON mode)         |
 | Embeddings        | Local sentence-transformers (BAAI/bge-small-en-v1.5), CPU-only |
-| Vector database   | Qdrant                                              |
+| Vector database   | pgvector (inside the same PostgreSQL instance — no separate service) |
 | Relational database | PostgreSQL                                        |
 | Package manager   | uv (backend), npm (frontend)                        |
 | Containerization  | Docker / docker-compose                             |
@@ -41,7 +41,7 @@ Generation, and the app never asks for personally identifiable information.
 │   ├── app/
 │   │   ├── api/              # FastAPI routers: chat, sessions, retrieve, feedback, analytics, checklist
 │   │   ├── services/          # Business logic (chat, analytics, ingestion, indexing, feedback, session)
-│   │   ├── repositories/      # Data access (Postgres, Qdrant) -- includes chat_turn_event_repository
+│   │   ├── repositories/      # Data access (Postgres, incl. pgvector) -- includes chat_turn_event_repository
 │   │   ├── models/             # ORM / domain models -- includes chat_turn_event.py (analytics)
 │   │   ├── schemas/             # Pydantic request/response schemas -- includes analytics.py
 │   │   ├── core/                 # Config, logging, rate limiting, cross-cutting concerns
@@ -79,8 +79,8 @@ Generation, and the app never asks for personally identifiable information.
 ├── .github/workflows/ci.yml   # Backend + frontend jobs: lint, typecheck, test, build
 ├── docs/
 │   └── production-readiness.md  # Evidence-based readiness report (test results, live E2E findings, gaps)
-├── docker-compose.yml          # Base: Postgres, Qdrant, backend, frontend
-├── docker-compose.override.yml # Auto-loaded for local dev: publishes DB/vector-store ports
+├── docker-compose.yml          # Base: Postgres (with pgvector), backend, frontend
+├── docker-compose.override.yml # Auto-loaded for local dev: publishes Postgres's port
 └── docker-compose.prod.yml     # Explicit -f overlay: resource limits, log rotation, no DB ports
 ```
 
@@ -106,7 +106,6 @@ docker compose up --build
 - Frontend (chat UI): http://localhost:3000
 - Analytics dashboard: http://localhost:3000/analytics
 - Backend health check: http://localhost:8000/api/v1/health
-- Qdrant dashboard: http://localhost:6333/dashboard
 - Postgres: localhost:5433 (mapped to avoid clashing with other local Postgres instances)
 
 Migrations run automatically on container start (see [Database Migrations](#database-migrations)),
@@ -116,7 +115,7 @@ containers are up, or the chat will have nothing to retrieve from.
 ```bash
 cd backend
 uv run python -m scripts.run_crawl      # crawl + auto-ingest UIUC pages (few minutes)
-uv run python -m scripts.run_indexing   # embed what was ingested into Qdrant
+uv run python -m scripts.run_indexing   # embed what was ingested (writes to document_chunks.embedding)
 ```
 
 ### Run the backend without Docker
@@ -239,10 +238,11 @@ Per-page quality control happens inside `Crawler`, not by curating which URLs to
 no ingestion, and writes every page found — including rejected ones and the reason — to a CSV,
 for reviewing crawl coverage before trusting a candidate new domain to auto-ingest.
 
-## Embeddings, Qdrant, and Hybrid Retrieval
+## Embeddings, pgvector, and Hybrid Retrieval
 
 Embeds every ingested chunk (local, CPU-only `BAAI/bge-small-en-v1.5` — no paid embedding API)
-and upserts into Qdrant:
+and writes the vectors onto `document_chunks.embedding` (pgvector, in the same Postgres database
+as everything else — no separate vector-store service):
 
 ```bash
 cd backend
@@ -252,9 +252,10 @@ uv run python -m scripts.run_indexing
 Idempotent the same way ingestion is: a `documents.embedded_content_hash` column is compared
 against `content_hash`, so re-running only embeds documents that actually changed. Query the
 result with `GET /api/v1/retrieve?query=...&topic=...&student_type=...&audience=...&document_type=...`
-— it fuses Qdrant semantic search with an in-process BM25 index via Reciprocal Rank Fusion and
-returns each result's per-ranker rank, fused score, subtopic, and rerank score, for inspecting
-retrieval quality directly (also surfaced in the frontend's debug mode).
+— it fuses pgvector cosine-distance search (`VectorRepository`, an HNSW index on `embedding`) with
+an in-process BM25 index via Reciprocal Rank Fusion and returns each result's per-ranker rank,
+fused score, subtopic, and rerank score, for inspecting retrieval quality directly (also surfaced
+in the frontend's debug mode).
 
 ## Conversation Graph (LangGraph)
 
@@ -335,7 +336,7 @@ fire-and-forget so a logging failure never breaks the chat response itself.
 
 Manual end-to-end testing surfaced a genuine bug: the embedding-based `TopicClassifier`
 confidently misclassified "How do I apply for OPT?" as `admissions`, and `retrieve` was passing
-that classification to Qdrant as a **hard filter**, so a wrong classification returned zero
+that classification to the vector search as a **hard filter**, so a wrong classification returned zero
 results even though hybrid search with no topic filter correctly ranked the real OPT page #1.
 Fixed by no longer using topic as a retrieval filter at all (`student_type` still is, since it
 comes from the verified session profile, not a noisy classifier guess) — topic classification now
@@ -454,20 +455,20 @@ conversation).
 cd backend && uv run pytest      # runs with coverage by default (see pyproject.toml addopts)
 ```
 
-Tests run against real PostgreSQL and Qdrant instances (no mocking the database or vector
-store) — but a **dedicated test database**, never the dev database: the table-cleanup fixtures
-between tests are destructive (`TRUNCATE ... CASCADE`). Create it once per Postgres instance
-(name is `<dev db>_test`, derived automatically by `Settings.test_database_url`):
+Tests run against a real PostgreSQL instance, including pgvector (no mocking the database or
+vector search) — but a **dedicated test database**, never the dev database: the table-cleanup
+fixtures between tests are destructive (`TRUNCATE ... CASCADE`). Create it once per Postgres
+instance (name is `<dev db>_test`, derived automatically by `Settings.test_database_url`), and
+run migrations against it too, since that's what creates the `vector` extension and
+`document_chunks.embedding` column there:
 
 ```bash
 docker exec uiuc_bot-postgres-1 psql -U illiniguide -d postgres -c "CREATE DATABASE illiniguide_test OWNER illiniguide;"
 DATABASE_URL="postgresql+asyncpg://illiniguide:change-me@localhost:5433/illiniguide_test" uv run alembic upgrade head
 ```
 
-Qdrant tests run against a separate `illiniguide_documents_test` collection, created and torn
-down automatically per test. **257/257 tests pass, 88% line coverage.** The handful of tests
-gated on a real Groq call skip themselves when `GROQ_API_KEY` isn't set, so the suite (and CI)
-stays green either way.
+**259/259 tests pass, ~88% line coverage.** The handful of tests gated on a real Groq call skip
+themselves when `GROQ_API_KEY` isn't set, so the suite (and CI) stays green either way.
 
 ```bash
 cd frontend && npm run test      # Vitest + React Testing Library, jsdom environment
@@ -484,8 +485,8 @@ jsdom implements neither and several components now depend on both.
 
 ### CI
 
-`.github/workflows/ci.yml` runs on every push/PR: a `backend` job (real Postgres + Qdrant service
-containers, `ruff check`, `mypy`, `pytest`) and a `frontend` job (`eslint`, `tsc --noEmit`,
+`.github/workflows/ci.yml` runs on every push/PR: a `backend` job (a real pgvector-enabled Postgres
+service container, `ruff check`, `mypy`, `pytest`) and a `frontend` job (`eslint`, `tsc --noEmit`,
 `vitest run`, `next build`) — the same commands you'd run locally, not a separate CI-only path.
 
 ## Performance
@@ -522,7 +523,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 **not** stack with `docker-compose.override.yml` the way plain `docker compose up` does for local
 dev. Relative to the base file, it:
 
-- Doesn't publish Postgres/Qdrant ports to the host.
+- Doesn't publish Postgres's port to the host.
 - Sets CPU/memory limits per service (`deploy.resources.limits`).
 - Caps container log file size (`json-file`, 10MB × 3 files).
 - Sets `ENVIRONMENT=production` and a real `CORS_ORIGINS` instead of `localhost`.

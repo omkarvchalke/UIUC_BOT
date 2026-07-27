@@ -96,23 +96,16 @@ class DocumentRepository:
                     )
                 )
             # embedded_content_hash is what IndexingService compares against
-            # content_hash to decide whether Qdrant needs re-indexing (see
-            # app/models/document.py) -- topic/department/student_types/
-            # audience/document_type all ride along in the Qdrant point
-            # payload too (indexing_service.py), so a metadata-only change
-            # (content_hash unchanged) has to invalidate it just like a
-            # content change does, or the stale payload in Qdrant -- which
-            # is what retrieval actually filters against -- never gets
-            # refreshed even after Postgres is corrected.
-            if (
-                document.content_hash != content_hash
-                or document.title != title
-                or document.department != department
-                or document.topic != topic
-                or list(document.student_types) != list(student_types)
-                or list(document.audience) != list(audience)
-                or document.document_type != document_type
-            ):
+            # content_hash to decide whether this document needs
+            # re-embedding (see app/models/document.py). Only content_hash
+            # matters here: unlike when Qdrant held a denormalized payload
+            # copy of topic/department/student_types/audience/document_type
+            # (requiring a re-index on any metadata change to avoid serving
+            # a stale filter value), VectorRepository now joins straight
+            # against this Document row on every search -- a metadata-only
+            # change (topic corrected, content unchanged) is live the
+            # instant this commits, no re-embedding required.
+            if document.content_hash != content_hash:
                 document.embedded_content_hash = None
             document.title = title
             document.department = department
@@ -181,6 +174,18 @@ class DocumentRepository:
         if document is None:
             return
         document.embedded_content_hash = content_hash
+        await self._db.commit()
+
+    async def set_chunk_embeddings(
+        self, chunks: list[DocumentChunk], vectors: list[list[float]]
+    ) -> None:
+        # Embeddings live on DocumentChunk itself (pgvector), not a separate
+        # store, so "indexing" a document is just filling in a column on
+        # rows IngestionService already wrote via replace_chunks -- no
+        # delete-then-reinsert needed the way a separate vector store
+        # required.
+        for chunk, vector in zip(chunks, vectors, strict=True):
+            chunk.embedding = vector
         await self._db.commit()
 
     async def list_all_chunks_with_documents(self) -> list[DocumentChunk]:

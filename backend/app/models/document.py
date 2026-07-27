@@ -2,6 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import ARRAY, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -9,6 +10,14 @@ from sqlalchemy.sql import func
 
 from app.database.base import Base
 from app.models.conversation_session import StudentType
+
+# Duplicated from app.embeddings.embedder.EMBEDDING_DIMENSION rather than
+# imported: that module imports sentence-transformers (and, transitively,
+# torch) at module load time, which every consumer of this models module
+# (schemas, Alembic migrations, lightweight tests) would otherwise pay for
+# just to define a table column. Must stay in sync with EMBEDDING_DIMENSION
+# if the embedding model ever changes.
+_EMBEDDING_DIMENSION = 384
 
 
 class Topic(enum.StrEnum):
@@ -122,8 +131,8 @@ class Document(Base):
     # we know when a URL was last actually checked.
     last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     content_hash: Mapped[str] = mapped_column(String(64))
-    # Compared against content_hash to decide whether Qdrant needs
-    # re-indexing. Separate from content_hash (Phase 3) because ingestion and
+    # Compared against content_hash to decide whether this document's
+    # chunks need re-embedding. Separate from content_hash (Phase 3) because ingestion and
     # indexing are independently re-runnable pipeline stages -- a document
     # can be re-fetched with unchanged content (content_hash matches, no
     # reindex needed) or the embedding model can change project-wide
@@ -161,6 +170,14 @@ class DocumentChunk(Base):
     # app/ingestion/chunking.py's module docstring for the phase boundary.
     subtopic: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # Set by IndexingService once this chunk's Document has been embedded
+    # (null in between: a chunk always exists in Postgres, via
+    # DocumentRepository.replace_chunks, before it's ever embedded).
+    # Formerly lived only in Qdrant as a separate vector store; folded in
+    # here so retrieval is one Postgres query (join + pgvector distance)
+    # instead of a Postgres fetch plus a second round-trip to a separate
+    # service -- see VectorRepository.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBEDDING_DIMENSION))
 
     document: Mapped[Document] = relationship(back_populates="chunks")
 

@@ -21,10 +21,10 @@ from app.services.indexing_service import IndexingService
 from app.services.session_service import SessionService
 
 
-def _build_deps(session: AsyncSession, vector_repository: VectorRepository) -> GraphDependencies:
+def _build_deps(session: AsyncSession) -> GraphDependencies:
     return GraphDependencies(
         session_service=SessionService(SessionRepository(session)),
-        hybrid_retriever=HybridRetriever(DocumentRepository(session), vector_repository),
+        hybrid_retriever=HybridRetriever(DocumentRepository(session), VectorRepository(session)),
         topic_classifier=TopicClassifier(),
         reranker=CrossEncoderReranker(),
         answer_generator=ExtractiveAnswerGenerator(),
@@ -32,9 +32,9 @@ def _build_deps(session: AsyncSession, vector_repository: VectorRepository) -> G
 
 
 def _build_test_graph(
-    session: AsyncSession, vector_repository: VectorRepository, checkpointer: AsyncPostgresSaver
+    session: AsyncSession, checkpointer: AsyncPostgresSaver
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
-    return build_graph(_build_deps(session, vector_repository), checkpointer=checkpointer)
+    return build_graph(_build_deps(session), checkpointer=checkpointer)
 
 
 async def _create_session(session: AsyncSession, *, student_type: StudentType | None) -> uuid.UUID:
@@ -46,7 +46,6 @@ async def _create_session(session: AsyncSession, *, student_type: StudentType | 
 
 async def _seed_and_index(
     session: AsyncSession,
-    vector_repository: VectorRepository,
     *,
     url: str,
     title: str,
@@ -67,17 +66,16 @@ async def _seed_and_index(
     await repository.replace_chunks(document.id, [ChunkResult(text=t) for t in chunk_texts])
     loaded = await repository.get_by_id(document.id)
     assert loaded is not None
-    await IndexingService(repository, vector_repository).index_document(loaded)
+    await IndexingService(repository).index_document(loaded)
 
 
 async def test_greeting_returns_canned_response_without_retrieval(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     async with db_session_factory() as session:
         session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
-        graph = _build_test_graph(session, test_vector_repository, test_checkpointer)
+        graph = _build_test_graph(session, test_checkpointer)
 
         result = await graph.ainvoke(turn_input(session_id, "hello"), config=config_for(session_id))
 
@@ -91,12 +89,11 @@ async def test_greeting_returns_canned_response_without_retrieval(
 
 async def test_first_turn_missing_profile_triggers_clarification(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     async with db_session_factory() as session:
         session_id = await _create_session(session, student_type=None)
-        graph = _build_test_graph(session, test_vector_repository, test_checkpointer)
+        graph = _build_test_graph(session, test_checkpointer)
 
         result = await graph.ainvoke(
             turn_input(session_id, "How do I apply for OPT?"), config=config_for(session_id)
@@ -110,12 +107,11 @@ async def test_first_turn_missing_profile_triggers_clarification(
 
 async def test_ambiguous_question_triggers_topic_clarification(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     async with db_session_factory() as session:
         session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
-        graph = _build_test_graph(session, test_vector_repository, test_checkpointer)
+        graph = _build_test_graph(session, test_checkpointer)
 
         result = await graph.ainvoke(
             turn_input(session_id, "asdfghjkl qwerty"), config=config_for(session_id)
@@ -128,13 +124,11 @@ async def test_ambiguous_question_triggers_topic_clarification(
 
 async def test_full_question_flow_returns_grounded_answer_with_citations(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     async with db_session_factory() as session:
         await _seed_and_index(
             session,
-            test_vector_repository,
             url="https://example.illinois.edu/housing",
             title="Undergraduate Housing",
             chunk_texts=[
@@ -143,7 +137,7 @@ async def test_full_question_flow_returns_grounded_answer_with_citations(
             topic=Topic.HOUSING,
         )
         session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
-        graph = _build_test_graph(session, test_vector_repository, test_checkpointer)
+        graph = _build_test_graph(session, test_checkpointer)
 
         result = await graph.ainvoke(
             turn_input(session_id, "Where do freshmen live on campus?"),
@@ -165,12 +159,11 @@ async def test_full_question_flow_returns_grounded_answer_with_citations(
 
 async def test_retrieval_falls_back_when_topic_classification_is_wrong(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     """Regression test for a real bug: the topic classifier confidently (0.65)
     misclassified "How do I apply for OPT?" as "admissions" purely from
-    "apply"/"application" word overlap. topic *is* now used as a Qdrant
+    "apply"/"application" word overlap. topic *is* now used as a pgvector
     filter (app/graph/nodes.py's retrieve node), but only provisionally --
     a topic-filtered result count below Settings.topic_filter_min_results
     falls back to an unfiltered search, so this wrong classification still finds
@@ -188,13 +181,12 @@ async def test_retrieval_falls_back_when_topic_classification_is_wrong(
     async with db_session_factory() as session:
         await _seed_and_index(
             session,
-            test_vector_repository,
             url="https://example.illinois.edu/opt",
             title="Optional Practical Training",
             chunk_texts=["Optional Practical Training (OPT) allows F-1 students to work."],
             topic=Topic.OPT,
         )
-        deps = _build_deps(session, test_vector_repository)
+        deps = _build_deps(session)
         deps.topic_classifier = AlwaysWrongTopicClassifier()  # type: ignore[assignment]
         graph = build_graph(deps, checkpointer=test_checkpointer)
         session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
@@ -211,7 +203,6 @@ async def test_retrieval_falls_back_when_topic_classification_is_wrong(
 
 async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     """Happy-path counterpart to the fallback test above: when the
@@ -232,7 +223,6 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
         for i in range(3):
             await _seed_and_index(
                 session,
-                test_vector_repository,
                 url=f"https://example.illinois.edu/cpt-{i}",
                 title="Curricular Practical Training",
                 chunk_texts=[
@@ -244,7 +234,6 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
             )
         await _seed_and_index(
             session,
-            test_vector_repository,
             url="https://example.illinois.edu/opt",
             title="Optional Practical Training",
             chunk_texts=[
@@ -253,7 +242,7 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
             ],
             topic=Topic.OPT,
         )
-        deps = _build_deps(session, test_vector_repository)
+        deps = _build_deps(session)
         deps.topic_classifier = AlwaysCptTopicClassifier()  # type: ignore[assignment]
         graph = build_graph(deps, checkpointer=test_checkpointer)
         session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
@@ -272,12 +261,11 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
 
 async def test_checkpointer_persists_messages_across_turns(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     async with db_session_factory() as session:
         session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
-        graph = _build_test_graph(session, test_vector_repository, test_checkpointer)
+        graph = _build_test_graph(session, test_checkpointer)
         config = config_for(session_id)
 
         first = await graph.ainvoke(turn_input(session_id, "hello"), config=config)
@@ -289,7 +277,6 @@ async def test_checkpointer_persists_messages_across_turns(
 
 async def test_greeting_after_a_classified_question_does_not_crash(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     """Regression test for a real bug hit live: a question that gets a real
@@ -306,7 +293,6 @@ async def test_greeting_after_a_classified_question_does_not_crash(
     async with db_session_factory() as session:
         await _seed_and_index(
             session,
-            test_vector_repository,
             url="https://example.illinois.edu/housing",
             title="Undergraduate Housing",
             chunk_texts=[
@@ -315,7 +301,7 @@ async def test_greeting_after_a_classified_question_does_not_crash(
             topic=Topic.HOUSING,
         )
         session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
-        graph = _build_test_graph(session, test_vector_repository, test_checkpointer)
+        graph = _build_test_graph(session, test_checkpointer)
         config = config_for(session_id)
 
         first = await graph.ainvoke(
@@ -329,20 +315,18 @@ async def test_greeting_after_a_classified_question_does_not_crash(
 
 async def test_clarification_asked_once_then_question_proceeds(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     test_checkpointer: AsyncPostgresSaver,
 ) -> None:
     async with db_session_factory() as session:
         await _seed_and_index(
             session,
-            test_vector_repository,
             url="https://example.illinois.edu/dining",
             title="Meal Plans",
             chunk_texts=["Meal plans include Classic Meals and Dining Dollars."],
             topic=Topic.DINING,
         )
         session_id = await _create_session(session, student_type=None)
-        graph = _build_test_graph(session, test_vector_repository, test_checkpointer)
+        graph = _build_test_graph(session, test_checkpointer)
         config = config_for(session_id)
 
         first = await graph.ainvoke(

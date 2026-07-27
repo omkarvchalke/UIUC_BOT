@@ -19,7 +19,7 @@ Re-embeds/re-indexes every rechunked document immediately after: chunk
 content/subtopic changed even though Document.content_hash did not, and
 IndexingService.index_document's own skip check only compares
 embedded_content_hash to content_hash, not chunk contents -- it would
-otherwise silently leave Qdrant serving stale chunks.
+otherwise silently leave stale chunk embeddings in place.
 
 Usage (from backend/):
     uv run python -m scripts.backfill_semantic_chunks
@@ -32,7 +32,6 @@ from app.database.session import get_session_factory
 from app.ingestion.fetch import build_client
 from app.models.document import SourceType
 from app.repositories.document_repository import DocumentRepository
-from app.repositories.vector_repository import VectorRepository
 from app.services.indexing_service import IndexingService
 from app.services.ingestion_service import IngestionService
 
@@ -48,10 +47,8 @@ async def main() -> None:
     session_factory = get_session_factory()
     async with session_factory() as session:
         repository = DocumentRepository(session)
-        vector_repository = VectorRepository()
-        await vector_repository.ensure_collection()
         ingestion_service = IngestionService(repository)
-        indexing_service = IndexingService(repository, vector_repository)
+        indexing_service = IndexingService(repository)
 
         documents = await repository.list_documents(limit=_ALL_DOCUMENTS_LIMIT, offset=0)
         html_documents = [d for d in documents if d.source_type is SourceType.HTML]

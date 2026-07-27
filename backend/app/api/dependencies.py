@@ -95,8 +95,8 @@ def get_analytics_service(
 AnalyticsServiceDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 
 
-def get_vector_repository() -> VectorRepository:
-    return VectorRepository()
+def get_vector_repository(db: DbSession) -> VectorRepository:
+    return VectorRepository(db)
 
 
 VectorRepositoryDep = Annotated[VectorRepository, Depends(get_vector_repository)]

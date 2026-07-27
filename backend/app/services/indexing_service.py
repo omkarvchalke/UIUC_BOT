@@ -2,13 +2,10 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal
 
-from qdrant_client import models
-
 from app.core.logging import get_logger
 from app.embeddings.embedder import Embedder
 from app.models.document import Document
 from app.repositories.document_repository import DocumentRepository
-from app.repositories.vector_repository import VectorRepository
 
 logger = get_logger(__name__)
 
@@ -25,26 +22,27 @@ class IndexResult:
 
 
 class IndexingService:
-    """Embeds each document's chunks and upserts them into Qdrant.
+    """Embeds each document's chunks and writes them onto
+    DocumentChunk.embedding (pgvector).
 
     Idempotent the same way IngestionService is: embedded_content_hash is
     compared against content_hash, so re-running only does work for
-    documents that actually changed (or were never indexed).
+    documents that actually changed (or were never indexed). No separate
+    vector-store client needed here anymore -- embeddings live in the same
+    Postgres row as the chunk they belong to (see DocumentRepository.
+    set_chunk_embeddings), so "indexing" is just filling in a column.
     """
 
     def __init__(
         self,
         document_repository: DocumentRepository,
-        vector_repository: VectorRepository,
         *,
         embedder: Embedder | None = None,
     ) -> None:
         self._documents = document_repository
-        self._vectors = vector_repository
         self._embedder = embedder or Embedder()
 
     async def index_all(self) -> list[IndexResult]:
-        await self._vectors.ensure_collection()
         documents = await self._documents.list_documents_needing_index()
         return [await self.index_document(document) for document in documents]
 
@@ -62,41 +60,8 @@ class IndexingService:
             logger.warning("indexing_embed_failed", url=document.url, error=str(exc))
             return IndexResult(document.id, document.url, "failed", error=str(exc))
 
-        # Delete-then-insert by document_id rather than tracking individual
-        # old point IDs: simpler, and correct even if chunk count changed
-        # (fewer/more chunks than the previous version) or the document was
-        # never indexed before (delete of a non-existent filter is a no-op).
-        await self._vectors.delete_by_document_id(document.id)
-
-        points = [
-            models.PointStruct(
-                id=str(chunk.id),
-                vector=vector,
-                payload={
-                    "document_id": str(document.id),
-                    "chunk_id": str(chunk.id),
-                    "chunk_number": chunk.chunk_number,
-                    "content": chunk.content,
-                    "url": document.url,
-                    "title": document.title,
-                    "department": document.department,
-                    "topic": document.topic.value,
-                    "source_type": document.source_type.value,
-                    "student_types": [st.value for st in document.student_types],
-                    "audience": [a.value for a in document.audience],
-                    "document_type": (
-                        document.document_type.value if document.document_type else None
-                    ),
-                    "subtopic": chunk.subtopic,
-                    "last_updated": (
-                        document.last_updated.isoformat() if document.last_updated else None
-                    ),
-                },
-            )
-            for chunk, vector in zip(document.chunks, vectors, strict=True)
-        ]
-        await self._vectors.upsert_chunks(points)
+        await self._documents.set_chunk_embeddings(document.chunks, vectors)
         await self._documents.mark_indexed(document.id, document.content_hash)
 
-        logger.info("indexing_document_indexed", url=document.url, chunk_count=len(points))
-        return IndexResult(document.id, document.url, "indexed", chunk_count=len(points))
+        logger.info("indexing_document_indexed", url=document.url, chunk_count=len(vectors))
+        return IndexResult(document.id, document.url, "indexed", chunk_count=len(vectors))

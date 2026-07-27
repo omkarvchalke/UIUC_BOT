@@ -31,7 +31,7 @@ class RetrievedChunk:
 
 
 class HybridRetriever:
-    """Combines Qdrant semantic search with in-process BM25 keyword search
+    """Combines pgvector semantic search with in-process BM25 keyword search
     via Reciprocal Rank Fusion.
 
     RRF over rank position (not raw score averaging) sidesteps the fact that
@@ -40,8 +40,10 @@ class HybridRetriever:
     "how many results did this beat" is comparable across any two rankers.
 
     Metadata for results always comes from the Postgres corpus fetched for
-    BM25, never from Qdrant's payload -- Postgres stays the single source of
-    truth for document metadata; Qdrant is purely a similarity ranker here.
+    BM25, never duplicated onto the semantic side -- VectorRepository.search()
+    only ever returns chunk ids (see its ScoredChunk), so Postgres stays the
+    single source of truth for document metadata; pgvector is purely a
+    similarity ranker here.
     """
 
     def __init__(
@@ -83,8 +85,8 @@ class HybridRetriever:
         # (see app/graph/nodes.py's metadata_filter node), so growing the
         # cache key for an unused dimension is complexity with no payoff --
         # a post-filter is equivalent and simpler. Must express the same
-        # predicate as the Qdrant-side filter above (see
-        # VectorRepository._build_filter) so semantic_points and corpus
+        # predicate as the pgvector-side filter above (see
+        # VectorRepository._filters) so semantic_points and corpus
         # agree on which chunks are eligible.
         corpus = self._filter_corpus(corpus, audience=audience, document_type=document_type)
         bm25_results = BM25Search(corpus).search(query, limit=candidate_limit)
@@ -170,9 +172,11 @@ class HybridRetriever:
         for chunk_id, score in scored[:limit]:
             chunk = corpus_by_id.get(chunk_id)
             if chunk is None:
-                # Qdrant returned a point whose chunk no longer exists in
-                # Postgres (e.g. index lagging a deletion) -- drop it rather
-                # than surface a citation to content that no longer exists.
+                # The semantic search and the BM25 corpus fetch are two
+                # separate queries within one request -- a chunk deleted or
+                # re-chunked (replace_chunks) between them would appear in
+                # one but not the other. Drop it rather than surface a
+                # citation to content that's no longer there.
                 logger.warning("hybrid_search_stale_point", chunk_id=chunk_id)
                 continue
             document = chunk.document

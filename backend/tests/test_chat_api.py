@@ -14,7 +14,6 @@ from app.models.document import SourceType, Topic
 from app.repositories.chat_turn_event_repository import ChatTurnEventRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.session_repository import SessionRepository
-from app.repositories.vector_repository import VectorRepository
 from app.services.indexing_service import IndexingService
 
 
@@ -30,7 +29,6 @@ async def _create_session(
 
 async def _seed_and_index(
     db_session_factory: async_sessionmaker[AsyncSession],
-    vector_repository: VectorRepository,
     *,
     url: str,
     title: str,
@@ -52,7 +50,7 @@ async def _seed_and_index(
         await repository.replace_chunks(document.id, [ChunkResult(text=t) for t in chunk_texts])
         loaded = await repository.get_by_id(document.id)
         assert loaded is not None
-        await IndexingService(repository, vector_repository).index_document(loaded)
+        await IndexingService(repository).index_document(loaded)
 
 
 async def test_chat_greeting_returns_answer_without_citations(
@@ -111,12 +109,10 @@ async def test_chat_missing_profile_triggers_clarification(
 
 async def test_chat_full_question_returns_grounded_answer_with_citations(
     db_session_factory: async_sessionmaker[AsyncSession],
-    test_vector_repository: VectorRepository,
     override_checkpointer: None,
 ) -> None:
     await _seed_and_index(
         db_session_factory,
-        test_vector_repository,
         url="https://example.illinois.edu/parking",
         title="Parking Permits",
         chunk_texts=["Students may purchase a parking permit through the Parking Department."],

@@ -1,15 +1,10 @@
 # Auto-loaded by plain `docker compose up` (no -f flags) for local
 # development -- NOT loaded when explicitly running with
-# docker-compose.prod.yml. Publishes Postgres/Qdrant ports to the host so
-# they're reachable for local debugging (psql, the Qdrant dashboard, tests
-# run outside Docker); production has no reason to expose the data stores
-# beyond the Docker network the backend already shares with them.
+# docker-compose.prod.yml. Publishes Postgres's port to the host so it's
+# reachable for local debugging (psql, tests run outside Docker);
+# production has no reason to expose the data store beyond the Docker
+# network the backend already shares with it.
 services:
   postgres:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
-
-  qdrant:
-    ports:
-      - "${QDRANT_HTTP_PORT:-6333}:6333"
-      - "${QDRANT_GRPC_PORT:-6334}:6334"
