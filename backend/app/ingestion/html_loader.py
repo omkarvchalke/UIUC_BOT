@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from bs4 import BeautifulSoup, Comment, Tag
-from bs4.element import NavigableString
+from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString, PreformattedString
 
 from app.ingestion.canonical import extract_canonical_link
 from app.ingestion.cleaning import clean_text
@@ -30,16 +30,20 @@ def parse_html(html: str, *, base_url: str, fallback_title: str = "Untitled") ->
     for tag in soup(_NOISE_TAGS):
         tag.decompose()
 
-    # bs4's Comment is a NavigableString subclass, so <!-- ... --> content
-    # is included verbatim (angle brackets and all) by both soup.get_text()
-    # below and _extract_sections' descendants walk unless stripped first --
-    # confirmed live: several UIUC Drupal pages emit template-debug comments
-    # like "<!-- replace paragraph ID with an anchor ID -->
-    # <!-- <details id="paragraph--1508" class="..."> -->", which was
-    # leaking that literal markup into real ingested chunk content and from
-    # there into real chat answers.
-    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
-        comment.extract()
+    # bs4's Comment/Doctype/CData/ProcessingInstruction/Declaration are all
+    # NavigableString subclasses (via the common PreformattedString base),
+    # so their raw markup -- angle brackets and all -- is included verbatim
+    # by _extract_sections' descendants walk unless stripped first (soup.
+    # get_text() below already excludes them on its own). Confirmed live,
+    # two separate real cases: several UIUC Drupal pages embed
+    # template-debug comments like "<!-- replace paragraph ID with an
+    # anchor ID --> <!-- <details id="paragraph--1508" class="..."> -->",
+    # and one KnowledgeBase article had a second, malformed
+    # "<!DOCTYPE html PUBLIC ...>" pasted mid-body (an editor copy-paste
+    # artifact) -- both leaked that literal markup into real ingested chunk
+    # content and from there into real chat answers.
+    for node in soup.find_all(string=lambda text: isinstance(text, PreformattedString)):
+        node.extract()
 
     title = _extract_title(soup) or fallback_title
     text = clean_text(soup.get_text(separator="\n"))

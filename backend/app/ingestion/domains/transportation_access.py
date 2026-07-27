@@ -32,8 +32,26 @@ SEEDS: tuple[CrawlSeed, ...] = (
         # Not an illinois.edu domain -- see the domain-safety allowlist in
         # tests/ingestion/test_sources.py. The actual authority for bus
         # fares/routes serving campus; illinois.edu has no equivalent.
+        #
+        # path_prefixes restricts this to the rider-facing and
+        # maps/schedules sections plus the Illinois Terminal (intercity
+        # travel hub) page -- an unrestricted crawl of mtd.org's full site
+        # was pulling in 6 non-English /languages/* pages (confirmed live:
+        # a real "what banking options does the i-card offer" query came
+        # back citing the *Chinese*-language page, since it happened to
+        # rank well for an unrelated reason), plus MTD's own corporate
+        # blog/HR/legal pages (/inside/advertise, /inside/board,
+        # /inside/jobs, /inside/mtd-pulse and its posts, /privacy-policy,
+        # /accessibility-policy) -- none of it relevant to a campus
+        # assistant, all of it diluting real transit-question retrieval.
         start_url="https://mtd.org",
         department="Champaign-Urbana Mass Transit District (MTD)",
+        path_prefixes=(
+            "/riding",
+            "/maps-and-schedules",
+            "/inside/illinois-terminal",
+            "/inside/contact",
+        ),
         max_depth=_DEFAULT_MAX_DEPTH,
         max_pages=_DEFAULT_MAX_PAGES,
     ),

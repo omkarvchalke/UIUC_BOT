@@ -64,6 +64,29 @@ def test_html_comments_do_not_leak_into_extracted_text() -> None:
     assert all("paragraph--" not in section.text for section in result.sections)
 
 
+def test_embedded_doctype_does_not_leak_into_extracted_text() -> None:
+    # Regression test for a real bug found live: a UIUC KnowledgeBase
+    # article had a second, malformed "<!DOCTYPE html PUBLIC ...>" pasted
+    # mid-body (an editor copy-paste artifact) -- bs4's Doctype, like
+    # Comment, is a NavigableString subclass, so it leaked into a real chat
+    # answer the same way.
+    html = """
+    <html><body>
+        <main>
+            <h1>IT Service Desk</h1>
+            <div class="doc-body">
+                <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">
+                Contact the IT Service Desk for help.
+            </div>
+        </main>
+    </body></html>
+    """
+    result = parse_html(html, base_url=_BASE_URL)
+    assert "Contact the IT Service Desk for help" in result.text
+    assert "DTD HTML" not in result.text
+    assert all("DTD HTML" not in section.text for section in result.sections)
+
+
 def test_extracts_last_updated_from_meta_tag() -> None:
     result = parse_html(_SAMPLE_HTML, base_url=_BASE_URL)
     assert result.last_updated == datetime(2026, 3, 15, 10, 0, tzinfo=UTC)

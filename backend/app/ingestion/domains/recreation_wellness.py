@@ -30,12 +30,20 @@ SEEDS: tuple[CrawlSeed, ...] = (
         max_depth=_DEFAULT_MAX_DEPTH,
         max_pages=_DEFAULT_MAX_PAGES,
     ),
-    CrawlSeed(
-        start_url="https://counselingcenter.illinois.edu",
-        department="Counseling Center",
-        max_depth=_DEFAULT_MAX_DEPTH,
-        max_pages=_DEFAULT_MAX_PAGES,
-    ),
+    # No CrawlSeed for counselingcenter.illinois.edu (only the explicit
+    # SOURCES entry below): a real 200-question sweep found a broad crawl
+    # of it had scattered 58 sub-pages (workshops, suicide prevention,
+    # therapy dog program, staff directory, ...) essentially randomly
+    # across topics that have nothing to do with their content -- 36 under
+    # international_student_services, but also under cpt, opt,
+    # campus_safety, admissions -- because none of this enum's topics is
+    # actually "mental health/counseling" (see the SOURCES comment below),
+    # so Crawler's classifier (which always picks *some* topic, however
+    # poor the match) had nothing good to assign. Confirmed live: "What
+    # does ISSS stand for?" cited a Campus Recreation food-assistance page
+    # that had been misclassified into international_student_services this
+    # way. Deleted the 58 polluted documents from the corpus alongside this
+    # change.
 )
 
 SOURCES: tuple[SourceConfig, ...] = (

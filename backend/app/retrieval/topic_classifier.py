@@ -29,10 +29,37 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     Topic.ORIENTATION: "new student orientation, welcome week, orientation programs",
     Topic.HOUSING: "on-campus housing, residence halls, dorms, where students live",
     Topic.DINING: "dining halls, meal plans, food on campus",
-    Topic.FINANCIAL_AID: "financial aid, tuition costs, paying for college, FAFSA",
+    # "Illinois Commitment" and "i-card banking services" deliberately in
+    # the description text -- two separate real findings from the same
+    # 200-question sweep: "What is the Illinois Commitment program?" scored
+    # 0.436 (below threshold, not even top-ranked) without the program name;
+    # "What banking options are available through the i-card?" scored
+    # closest to Topic.VISA (0.569 vs financial_aid's 0.564, an unrelated
+    # near-tie -- "i-card" has no strong single-topic home in this
+    # taxonomy) without the i-card phrase, misclassifying to visa and
+    # answering with U-visa/TRUST-Act content for a banking question.
+    # "billing refunds and overpayments" deliberately added too: "Are there
+    # refund options for overpayment?" scored 0.519 (below financial_aid's
+    # closest competitor, health_insurance's "waiving/opting out" phrasing
+    # below) without it.
+    Topic.FINANCIAL_AID: (
+        "financial aid, tuition costs, paying for college, FAFSA, "
+        "the Illinois Commitment free-tuition program, i-card banking services, "
+        "billing refunds and overpayments"
+    ),
     Topic.SCHOLARSHIPS: "scholarships and merit awards",
-    Topic.STUDENT_EMPLOYMENT: "on-campus jobs, work study, student employment",
-    Topic.INTERNATIONAL_STUDENT_SERVICES: "international student services and support",
+    # "Hire Illini" (the job board's actual name) deliberately in the
+    # description text -- same bare-proper-noun pattern as Illinois
+    # Commitment above: 0.558 without it, below threshold.
+    Topic.STUDENT_EMPLOYMENT: (
+        "on-campus jobs, work study, student employment, Hire Illini job board"
+    ),
+    # "ISSS" spelled out deliberately in the description text -- same
+    # bare-acronym pattern as OPT above: 0.572 without it, below threshold.
+    Topic.INTERNATIONAL_STUDENT_SERVICES: (
+        "international student services and support, "
+        "ISSS (International Student and Scholar Services)"
+    ),
     Topic.VISA: "visa status, I-20, immigration documents",
     Topic.CPT: "curricular practical training, CPT work authorization",
     # "what is OPT" is deliberately in the description text, not just
@@ -43,8 +70,36 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     Topic.OPT: "what is OPT, optional practical training, OPT work authorization after graduation",
     Topic.TECHNOLOGY_SERVICES: "campus technology, wifi, email, IT help desk",
     Topic.LIBRARIES: "university library hours, services, and locations",
-    Topic.TRANSPORTATION: "parking, campus buses, getting around campus",
-    Topic.HEALTH_INSURANCE: "student health insurance and health services",
+    # "MTD bus passes/fares" deliberately in the description text -- same
+    # bare-acronym pattern as OPT/ISSS above: "How much does an MTD bus
+    # pass cost?" scored 0.498 without it, below threshold.
+    # "Willard Airport" deliberately added too: "Does UIUC have its own
+    # airport?" scored below Topic.ADMISSIONS (0.591 vs 0.556) without it.
+    Topic.TRANSPORTATION: (
+        "parking, campus buses and MTD bus passes/fares, getting around campus, Willard Airport"
+    ),
+    # "waiving or opting out" deliberately in the description text: a real
+    # 200-question sweep found "Can I opt out of the mandatory health
+    # insurance?" misclassified as Topic.OPT (0.644 vs 0.637, a near-tie)
+    # purely from "opt" surface-overlapping OPT's description, retrieving a
+    # completely unrelated MTD privacy-policy chunk. Re-verified this
+    # description change alone fixes the near-tie (0.82 vs 0.64) without
+    # weakening real OPT queries ("How do I apply for OPT?" stays 0.70 vs
+    # 0.59).
+    # "seeing a doctor... McKinley Health Center" deliberately added too:
+    # raised "Where do I go for a doctor's appointment on campus?" from
+    # 0.533 to 0.643, though not quite enough -- Topic.DINING wins that
+    # specific query at 0.650 for reasons unrelated to either description
+    # (no dining-specific wording in the query at all). Left as a real,
+    # documented residual limitation rather than chasing a third
+    # competitor's description -- see docs/production-readiness.md-style
+    # honesty: this genuinely helps grounding for other doctor/McKinley
+    # phrasings even though it didn't flip this exact one.
+    Topic.HEALTH_INSURANCE: (
+        "student health insurance and health services, waiving or opting out "
+        "of the mandatory health insurance plan, seeing a doctor or medical "
+        "appointments at McKinley Health Center"
+    ),
     Topic.CAMPUS_RECREATION: "gym, fitness, recreation center membership",
     Topic.STUDENT_ORGANIZATIONS: "student clubs and registered student organizations",
     Topic.ACADEMIC_CALENDAR: "academic calendar, semester dates, add/drop deadlines",

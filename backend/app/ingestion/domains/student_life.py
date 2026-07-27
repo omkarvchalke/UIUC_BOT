@@ -1,6 +1,6 @@
 """Student Life & Organizations -- student government, registered student
-organizations, and campus involvement, via Student Affairs and the Illini
-Union."""
+organizations, and campus involvement, via Student Engagement and the
+Illini Union."""
 
 from app.core.config import get_settings
 from app.ingestion.crawl_seed import CrawlSeed
@@ -11,12 +11,19 @@ _DEFAULT_MAX_DEPTH = get_settings().crawl_default_max_depth
 _DEFAULT_MAX_PAGES = get_settings().crawl_default_max_pages
 
 SEEDS: tuple[CrawlSeed, ...] = (
-    CrawlSeed(
-        start_url="https://studentaffairs.illinois.edu",
-        department="Student Affairs",
-        max_depth=_DEFAULT_MAX_DEPTH,
-        max_pages=_DEFAULT_MAX_PAGES,
-    ),
+    # No CrawlSeed for studentaffairs.illinois.edu: a real 200-question
+    # sweep found a broad crawl of it had scattered 49 sub-pages (advisory
+    # committees, advancement/giving, news archives, inclusive-excellence
+    # committees -- an administrative parent-site hub, not practical
+    # student-facing content) essentially randomly across topics with
+    # nothing to do with their content, the same
+    # doesn't-map-to-any-real-topic pollution pattern as
+    # counselingcenter.illinois.edu (see recreation_wellness.py's SEEDS
+    # comment for the fuller explanation). Deleted the 49 polluted
+    # documents from the corpus alongside this change. The genuinely useful
+    # student-org content lives at studentengagement.illinois.edu instead
+    # (see SOURCES below), a different subdomain with a narrower, on-topic
+    # scope.
     CrawlSeed(
         start_url="https://union.illinois.edu",
         department="Illini Union",
