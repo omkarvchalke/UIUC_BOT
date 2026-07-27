@@ -219,16 +219,27 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
         def classify(self, message: str) -> TopicClassification:
             return TopicClassification(topic=Topic.CPT, confidence=0.99)
 
+    # Distinct wording per document, not just a distinct URL/title: the
+    # answer generator (ExtractiveAnswerGenerator) dedupes identical
+    # sentences across chunks (two real UIUC pages sharing boilerplate text
+    # otherwise showed the same line twice), which would collapse these 3
+    # citations down to 1 if their content were byte-identical -- this test
+    # is about topic filtering finding all 3 documents, not about that
+    # dedup behavior, so keep the content distinguishable.
     async with db_session_factory() as session:
-        for i in range(3):
+        detail_by_index = (
+            "an offer letter",
+            "academic advisor approval",
+            "work authorization tied to their curriculum",
+        )
+        for i, detail in enumerate(detail_by_index):
             await _seed_and_index(
                 session,
                 url=f"https://example.illinois.edu/cpt-{i}",
                 title="Curricular Practical Training",
                 chunk_texts=[
-                    "Curricular Practical Training (CPT) requires an offer letter and "
-                    "academic advisor approval before F-1 students may begin work "
-                    "authorization for training tied to their curriculum."
+                    "Curricular Practical Training (CPT) requires "
+                    f"{detail} before F-1 students may begin CPT work authorization."
                 ],
                 topic=Topic.CPT,
             )
