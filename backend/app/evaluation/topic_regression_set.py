@@ -1,4 +1,4 @@
-"""306-case topic-classification regression set: for every case, the
+"""307-case topic-classification regression set: for every case, the
 *genuinely correct* topic for that message, hand-verified against the real
 taxonomy and the real corpus organization -- not what TopicClassifier
 currently happens to return. See tests/retrieval/test_topic_regression.py,
@@ -105,6 +105,13 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("What's the acceptance rate for freshman applicants?", Topic.ADMISSIONS),
     TopicCase("Is UIUC test-optional for admissions?", Topic.ADMISSIONS),
     TopicCase("Can I transfer in with an associate's degree?", Topic.ADMISSIONS),
+    # Regression found via a live 200-question sweep, not the offline
+    # suite itself: this exact phrasing wasn't one of the 306 cases, so
+    # nothing caught it when SCHOLARSHIPS gained a "transfer students"
+    # exemplar in a prior round and started winning this query instead
+    # (both matched on "transfer(ring)"). Added here specifically so a
+    # repeat of this collision is caught offline next time.
+    TopicCase("I'm a junior transferring in, what's my GPA cutoff?", Topic.ADMISSIONS),
     TopicCase("What's the average class size for incoming freshmen?", Topic.ADMISSIONS),
     TopicCase(
         "How selective is the College of Engineering for freshman applicants?",

@@ -400,6 +400,15 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         "acceptance rates and selectivity for different academic colleges within UIUC",
         "what transcripts and test scores to submit for a graduate school application",
         "applying under an early action plan versus the regular decision timeline",
+        # Added after a live 200-question sweep (run against the deployed
+        # app, not just the regression suite) caught a real regression the
+        # suite's 306 cases didn't cover: "I'm a junior transferring in,
+        # what's my GPA cutoff?" had flipped from correctly ADMISSIONS to
+        # SCHOLARSHIPS once that topic gained a "transfer students"
+        # exemplar in the prior round -- both matched on "transfer(ring)"
+        # alone. This exemplar was added to the regression suite too, so
+        # future rounds catch a repeat of this specific collision offline.
+        "the minimum GPA cutoff to transfer in as a junior",
     ),
     Topic.ACADEMIC_ADVISING: (
         "the paperwork to officially declare or switch your major within LAS",
