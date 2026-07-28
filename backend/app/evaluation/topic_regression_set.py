@@ -15,18 +15,27 @@ strict=True in the test, so if a future topic_classifier.py change happens
 to fix one, pytest reports an XPASS failure -- that's the signal to delete
 the xfail_reason, not a bug in the test.
 
-This set has driven three rounds of fixes so far, each verified against the
+This set has driven four rounds of fixes so far, each verified against the
 full accumulated suite before being applied (see topic_classifier.py's
-comments on Topic.TRANSPORTATION, Topic.REGISTRATION, and the
-REGISTRATION-attractor-cluster follow-up round that touched HOUSING,
-STUDENT_EMPLOYMENT, INTERNATIONAL_STUDENT_SERVICES, VISA, TRANSPORTATION,
-HEALTH_INSURANCE, CAMPUS_RECREATION, CAMPUS_SAFETY, and CAREER_SERVICES).
-Remaining xfails follow the same handful of shapes -- a short/generic
-description on one topic winning by default over a weaker, more specific
-description on the correct topic -- but several rounds of attempted fixes
-for ADMISSIONS, ACADEMIC_CALENDAR, FINANCIAL_AID, SCHOLARSHIPS, and
-COURSE_REGISTRATION were each rejected for causing new regressions
-elsewhere and are tracked here rather than force-fixed.
+comments on Topic.TRANSPORTATION, Topic.REGISTRATION, the
+REGISTRATION-attractor-cluster follow-up round, and the 39-xfail follow-up
+round after that). Every round used the same incremental, one-topic-at-a-
+time acceptance methodology: batching several "safe-looking" changes
+together reliably produced more regressions than testing them one at a
+time, even when each individual change looked additive-only.
+
+Remaining xfails cluster heavily around five topics that resisted repeated,
+differently-worded fix attempts across multiple rounds: ADMISSIONS (a
+broad "new/incoming student" magnet with no clean way to narrow it),
+ACADEMIC_CALENDAR ("deadline" is shared vocabulary with several other
+topics' own deadlines), FINANCIAL_AID (fragile -- nearly every tested
+addition broke "Where do I buy textbooks?" or "How do I apply for
+financial aid?"), SCHOLARSHIPS (swaps regressions with FINANCIAL_AID and
+ADMISSIONS depending on wording), and COURSE_REGISTRATION (extremely
+fragile -- even single-word additions caused 2-4 new regressions each
+attempt). These are tracked here rather than force-fixed; a proper fix
+likely needs a coordinated redesign across all five at once, not more
+one-off wording attempts.
 
 A handful of messages that look like plausible test cases were
 deliberately excluded, not included as extra cases:
@@ -90,16 +99,9 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "Can I defer my admission to a later semester?",
         Topic.ADMISSIONS,
-        xfail_reason=("loses to ACADEMIC_CALENDAR [currently: academic_calendar, 0.651]"),
+        xfail_reason=("loses to ACADEMIC_CALENDAR [currently: academic_advising, 0.624]"),
     ),
-    TopicCase(
-        "Do I need letters of recommendation to apply?",
-        Topic.ADMISSIONS,
-        xfail_reason=(
-            "loses to REGISTRATION -- same generic-attractor pattern [currently: "
-            "registration, 0.627]"
-        ),
-    ),
+    TopicCase("Do I need letters of recommendation to apply?", Topic.ADMISSIONS),
     TopicCase(
         "What's the difference between early action and regular decision?",
         Topic.ADMISSIONS,
@@ -174,7 +176,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "What is the move-in process like?",
         Topic.HOUSING,
-        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.563]"),
+        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.564]"),
     ),
     TopicCase("What special living options are available?", Topic.HOUSING),
     TopicCase("Will I be assigned a specific dorm or do I pick?", Topic.HOUSING),
@@ -192,7 +194,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         "How do I cancel my housing contract?",
         Topic.HOUSING,
         xfail_reason=(
-            "scores below the 0.55 clarification threshold entirely [currently: None, 0.515]"
+            "scores below the 0.55 clarification threshold entirely [currently: None, 0.514]"
         ),
     ),
     TopicCase(
@@ -203,7 +205,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "Does UIUC offer single-occupancy dorm rooms for an extra fee?",
         Topic.HOUSING,
-        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.664]"),
+        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.659]"),
     ),
     TopicCase(
         "What's the earliest I can move into the dorms before classes start?",
@@ -232,7 +234,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.FINANCIAL_AID,
         xfail_reason=(
             "loses to ACADEMIC_CALENDAR -- 'deadline' is a recurring attractor "
-            "[currently: academic_calendar, 0.695]"
+            "[currently: scholarships, 0.709]"
         ),
     ),
     TopicCase("What types of financial aid does UIUC offer?", Topic.FINANCIAL_AID),
@@ -249,13 +251,13 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         "What is the net price calculator?",
         Topic.FINANCIAL_AID,
         xfail_reason=(
-            "scores below the 0.55 clarification threshold entirely [currently: None, 0.477]"
+            "scores below the 0.55 clarification threshold entirely [currently: None, 0.494]"
         ),
     ),
     TopicCase(
         "How do I check my financial aid award status?",
         Topic.FINANCIAL_AID,
-        xfail_reason=("loses to SCHOLARSHIPS [currently: scholarships, 0.689]"),
+        xfail_reason=("loses to SCHOLARSHIPS [currently: scholarships, 0.691]"),
     ),
     TopicCase("Are there payment plans for tuition?", Topic.FINANCIAL_AID),
     TopicCase(
@@ -263,7 +265,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.FINANCIAL_AID,
         xfail_reason=(
             "loses to SCHOLARSHIPS -- adjacent-but-distinct concept [currently: "
-            "scholarships, 0.583]"
+            "scholarships, 0.604]"
         ),
     ),
     TopicCase(
@@ -271,21 +273,21 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.FINANCIAL_AID,
         xfail_reason=(
             "loses to INTERNATIONAL_STUDENT_SERVICES [currently: "
-            "international_student_services, 0.669]"
+            "international_student_services, 0.660]"
         ),
     ),
     TopicCase("Is the Illinois Commitment scholarship need-based?", Topic.FINANCIAL_AID),
     TopicCase(
         "Can I get a tuition waiver as a graduate assistant?",
         Topic.FINANCIAL_AID,
-        xfail_reason=("loses to OPT [currently: student_employment, 0.624]"),
+        xfail_reason=("loses to OPT [currently: student_employment, 0.632]"),
     ),
     TopicCase(
         "What scholarships are available for incoming freshmen?",
         Topic.SCHOLARSHIPS,
         xfail_reason=(
             "loses to ADMISSIONS -- 'incoming'/'freshmen' overlap admissions description "
-            "[currently: admissions, 0.693]"
+            "[currently: admissions, 0.699]"
         ),
     ),
     TopicCase(
@@ -297,17 +299,10 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.SCHOLARSHIPS,
         xfail_reason=(
             "loses to ADMISSIONS -- same pattern as incoming-freshmen scholarships above "
-            "[currently: admissions, 0.661]"
+            "[currently: admissions, 0.657]"
         ),
     ),
-    TopicCase(
-        "What is the deadline to apply for scholarships?",
-        Topic.SCHOLARSHIPS,
-        xfail_reason=(
-            "loses to ACADEMIC_CALENDAR -- 'deadline' attractor [currently: "
-            "academic_calendar, 0.684]"
-        ),
-    ),
+    TopicCase("What is the deadline to apply for scholarships?", Topic.SCHOLARSHIPS),
     TopicCase("Are scholarships renewable each year?", Topic.SCHOLARSHIPS),
     TopicCase("Where can I find a list of available scholarships?", Topic.SCHOLARSHIPS),
     TopicCase("Is there a merit scholarship I should apply for separately?", Topic.SCHOLARSHIPS),
@@ -325,11 +320,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.STUDENT_EMPLOYMENT,
     ),
     TopicCase("Can I have more than one on-campus job at a time?", Topic.STUDENT_EMPLOYMENT),
-    TopicCase(
-        "How do I apply for a graduate assistantship?",
-        Topic.STUDENT_EMPLOYMENT,
-        xfail_reason=("loses to ACADEMIC_ADVISING [currently: academic_advising, 0.659]"),
-    ),
+    TopicCase("How do I apply for a graduate assistantship?", Topic.STUDENT_EMPLOYMENT),
     TopicCase("Does working on campus affect my financial aid?", Topic.STUDENT_EMPLOYMENT),
     TopicCase(
         "What's the difference between a graduate assistantship and work study?",
@@ -346,7 +337,6 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "What resources are available for international students on campus?",
         Topic.INTERNATIONAL_STUDENT_SERVICES,
-        xfail_reason=("loses to HOUSING [currently: dining, 0.685]"),
     ),
     TopicCase(
         "What should international students do before they arrive on campus?",
@@ -355,7 +345,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "What documents should I bring when I first arrive at UIUC?",
         Topic.INTERNATIONAL_STUDENT_SERVICES,
-        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.756]"),
+        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.766]"),
     ),
     TopicCase(
         "What does ISSS stand for and what do they do?",
@@ -416,28 +406,12 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     ),
     TopicCase("What are the library hours?", Topic.LIBRARIES),
     TopicCase("How many libraries are on campus?", Topic.LIBRARIES),
-    TopicCase(
-        "Can I reserve a study room in the library?",
-        Topic.LIBRARIES,
-        xfail_reason=("loses to HOUSING [currently: housing, 0.633]"),
-    ),
-    TopicCase(
-        "Do libraries offer virtual reality resources?",
-        Topic.LIBRARIES,
-        xfail_reason=("loses to ACCESSIBILITY [currently: accessibility, 0.593]"),
-    ),
+    TopicCase("Can I reserve a study room in the library?", Topic.LIBRARIES),
+    TopicCase("Do libraries offer virtual reality resources?", Topic.LIBRARIES),
     TopicCase("How do I check out a book from the library?", Topic.LIBRARIES),
     TopicCase("What time does the main library close on weekends?", Topic.LIBRARIES),
     TopicCase("Are there quiet study spaces in the library?", Topic.LIBRARIES),
-    TopicCase(
-        "Does the library have textbooks on reserve?",
-        Topic.LIBRARIES,
-        xfail_reason=(
-            "loses to FINANCIAL_AID -- 'textbooks' phrase, added this session for a "
-            "different real fix, is now itself a minor attractor [currently: "
-            "financial_aid, 0.587]"
-        ),
-    ),
+    TopicCase("Does the library have textbooks on reserve?", Topic.LIBRARIES),
     TopicCase("Can alumni check out books from the library?", Topic.LIBRARIES),
     TopicCase("Does the library offer interlibrary loan?", Topic.LIBRARIES),
     TopicCase("What's the quietest library on campus for studying?", Topic.LIBRARIES),
@@ -498,11 +472,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("How do I get a gym membership?", Topic.CAMPUS_RECREATION),
     TopicCase("What fitness facilities are available on campus?", Topic.CAMPUS_RECREATION),
     TopicCase("Can I join intramural sports?", Topic.CAMPUS_RECREATION),
-    TopicCase(
-        "Does the campus have a swimming pool?",
-        Topic.CAMPUS_RECREATION,
-        xfail_reason=("loses to HOUSING [currently: housing, 0.639]"),
-    ),
+    TopicCase("Does the campus have a swimming pool?", Topic.CAMPUS_RECREATION),
     TopicCase("Is the recreation center free for students?", Topic.CAMPUS_RECREATION),
     TopicCase("Is the climbing wall open to all students?", Topic.CAMPUS_RECREATION),
     TopicCase("What intramural sports are offered each semester?", Topic.CAMPUS_RECREATION),
@@ -540,13 +510,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("When does the spring semester end?", Topic.ACADEMIC_CALENDAR),
     TopicCase("What are the final exam dates?", Topic.ACADEMIC_CALENDAR),
     TopicCase("When do finals start this semester?", Topic.ACADEMIC_CALENDAR),
-    TopicCase(
-        "When does winter break start and end?",
-        Topic.ACADEMIC_CALENDAR,
-        xfail_reason=(
-            "scores below the 0.55 clarification threshold entirely [currently: None, 0.541]"
-        ),
-    ),
+    TopicCase("When does winter break start and end?", Topic.ACADEMIC_CALENDAR),
     TopicCase("What's the last day of finals week?", Topic.ACADEMIC_CALENDAR),
     TopicCase("Is there a reading day before finals?", Topic.ACADEMIC_CALENDAR),
     TopicCase("When do grades get posted after finals?", Topic.ACADEMIC_CALENDAR),
@@ -558,7 +522,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.COURSE_REGISTRATION,
         xfail_reason=(
             "loses to ACADEMIC_CALENDAR -- 'last day' is a deadline-style attractor "
-            "[currently: academic_calendar, 0.674]"
+            "[currently: academic_calendar, 0.658]"
         ),
     ),
     TopicCase(
@@ -572,7 +536,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.COURSE_REGISTRATION,
         xfail_reason=(
             "loses to ACADEMIC_CALENDAR -- deadline-style attractor [currently: "
-            "academic_calendar, 0.600]"
+            "scholarships, 0.598]"
         ),
     ),
     TopicCase("Can I audit a class without getting credit?", Topic.COURSE_REGISTRATION),
@@ -598,14 +562,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("How do I request accommodations for ADHD?", Topic.ACCESSIBILITY),
     TopicCase("What accommodations does DRES provide for testing?", Topic.ACCESSIBILITY),
     TopicCase("Can DRES help with accessible campus housing?", Topic.ACCESSIBILITY),
-    TopicCase(
-        "Do I need a doctor's note to register with DRES?",
-        Topic.ACCESSIBILITY,
-        xfail_reason=(
-            "loses to REGISTRATION -- 'register with' phrase is a generic attractor "
-            "[currently: registration, 0.610]"
-        ),
-    ),
+    TopicCase("Do I need a doctor's note to register with DRES?", Topic.ACCESSIBILITY),
     TopicCase("What career services does UIUC offer?", Topic.CAREER_SERVICES),
     TopicCase("How do I get my resume reviewed?", Topic.CAREER_SERVICES),
     TopicCase("Does the Career Center help with job searching?", Topic.CAREER_SERVICES),
@@ -635,7 +592,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "What are the requirements to declare a major in LAS?",
         Topic.ACADEMIC_ADVISING,
-        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.602]"),
+        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.612]"),
     ),
     TopicCase("asdfghjkl qwerty", None),
     TopicCase("what's the weather like today", None),
@@ -643,7 +600,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "what time is it right now",
         None,
-        xfail_reason=("loses to ACADEMIC_CALENDAR [currently: academic_calendar, 0.554]"),
+        xfail_reason=("loses to ACADEMIC_CALENDAR [currently: academic_calendar, 0.575]"),
     ),
     TopicCase(
         "can you recommend a good pizza place",

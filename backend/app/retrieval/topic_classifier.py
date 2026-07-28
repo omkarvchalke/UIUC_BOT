@@ -21,9 +21,20 @@ from app.models.document import Topic
 # occasional unnecessary clarifying question; as a hard filter it would
 # have silently returned zero results instead.
 _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
+    # "letters of recommendation" added in a 39-xfail follow-up round (see
+    # the REGISTRATION-attractor comment below for the regression suite
+    # this refers to): "Do I need letters of recommendation to apply?" was
+    # losing to Topic.REGISTRATION with nothing recommendation-specific to
+    # compete with it. Several other candidate additions to this
+    # description (early action/regular decision, deferring admission,
+    # declaring a major) were tried and rejected in the same round --
+    # each caused new regressions on "How do I apply for financial aid?"
+    # or similar, since ADMISSIONS' "apply"/"new student" wording is
+    # already a near-default match for anything application-shaped.
     Topic.ADMISSIONS: (
         "becoming a new UIUC student: freshman or transfer admission requirements, "
-        "essays, deadlines for prospective and incoming students"
+        "essays, letters of recommendation, deadlines for prospective and "
+        "incoming students"
     ),
     # Was just "registering as a new or continuing student" -- short enough
     # that it acted as a generic default attractor for almost anything
@@ -104,7 +115,13 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
         "the Illinois Commitment free-tuition program, i-card banking services, "
         "billing refunds and overpayments, buying textbooks"
     ),
-    Topic.SCHOLARSHIPS: "scholarships and merit awards",
+    # "scholarship application deadlines" added in a 39-xfail follow-up
+    # round: "What is the deadline to apply for scholarships?" was losing
+    # to Topic.ACADEMIC_CALENDAR, whose bare "deadlines" wording is a
+    # recurring attractor across several topics.
+    Topic.SCHOLARSHIPS: (
+        "scholarships and merit awards, including scholarship application deadlines"
+    ),
     # "Hire Illini" (the job board's actual name) deliberately in the
     # description text -- same bare-proper-noun pattern as Illinois
     # Commitment above: 0.558 without it, below threshold.
@@ -115,10 +132,12 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # "graduate assistantships" added in the REGISTRATION-attractor follow-up
     # round: "What's the difference between a graduate assistantship and
     # work study?" was losing to Topic.OPT with no assistantship wording to
-    # compete with.
+    # compete with. "applying for" prefixed onto it in a later 39-xfail
+    # follow-up round: "How do I apply for a graduate assistantship?" was
+    # separately losing to Topic.ACADEMIC_ADVISING until this was added.
     Topic.STUDENT_EMPLOYMENT: (
-        "on-campus jobs, work study, student employment, graduate "
-        "assistantships, Hire Illini job board, work hour limits"
+        "on-campus jobs, work study, student employment, applying for "
+        "graduate assistantships, Hire Illini job board, work hour limits"
     ),
     # "ISSS" spelled out deliberately in the description text -- same
     # bare-acronym pattern as OPT above: 0.572 without it, below threshold.
@@ -126,10 +145,15 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # REGISTRATION-attractor follow-up round: "What should international
     # students do before they arrive on campus?" was losing to
     # Topic.ADMISSIONS, which shares "new"/"incoming student" wording.
+    # "campus resources specifically for international students" added in
+    # a later 39-xfail follow-up round: "What resources are available for
+    # international students on campus?" was separately losing to
+    # Topic.HOUSING/DINING purely off the generic "on campus" phrase.
     Topic.INTERNATIONAL_STUDENT_SERVICES: (
         "international student services and support, "
         "ISSS (International Student and Scholar Services), pre-arrival "
-        "preparation and check-in"
+        "preparation and check-in, and campus resources specifically for "
+        "international students"
     ),
     # "SEVIS" added in the REGISTRATION-attractor follow-up round: "What is
     # SEVIS and why does it matter?" scored 0.487, below the clarification
@@ -146,7 +170,14 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # found via the golden-set eval (app/evaluation/golden_set.py).
     Topic.OPT: "what is OPT, optional practical training, OPT work authorization after graduation",
     Topic.TECHNOLOGY_SERVICES: "campus technology, wifi, email, IT help desk",
-    Topic.LIBRARIES: "university library hours, services, and locations",
+    # "study room reservations" added in a 39-xfail follow-up round: "Can I
+    # reserve a study room in the library?" was losing to Topic.HOUSING
+    # purely off generic wording, with nothing study-room-specific to
+    # compete with it. An earlier wording ("reserving a study room")
+    # regressed "Where do I buy textbooks?" and "How do I reset my
+    # university password?" by pulling too much weight toward LIBRARIES;
+    # this phrasing didn't.
+    Topic.LIBRARIES: "university library hours, services, locations, and study room reservations",
     # Built up incrementally from real sweep failures, each phrase added
     # for a specific query that scored below its competitor without it:
     # "MTD bus passes/fares" (bare-acronym pattern, same as OPT/ISSS above)
@@ -220,12 +251,25 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # REGISTRATION-attractor follow-up round: both were losing to
     # Topic.STUDENT_ORGANIZATIONS (registered clubs), a related but
     # distinct concept, with nothing recreation-specific to compete with it.
+    # Bare "pool" added right after "gym" in a later 39-xfail follow-up
+    # round: "Does the campus have a swimming pool?" was losing to
+    # Topic.HOUSING. Longer phrasings ("an indoor swimming pool") were
+    # tried first and rejected -- they diluted the description enough to
+    # cost "Can I rent kayaks...from the rec center?" to Topic.TRANSPORTATION
+    # instead; the single bare word didn't.
     Topic.CAMPUS_RECREATION: (
-        "gym, fitness facilities, recreation center membership, intramural "
-        "sports, and the climbing wall"
+        "gym, pool, fitness facilities, recreation center membership, "
+        "intramural sports, and the climbing wall"
     ),
     Topic.STUDENT_ORGANIZATIONS: "student clubs and registered student organizations",
-    Topic.ACADEMIC_CALENDAR: "academic calendar, semester dates, add/drop deadlines",
+    # "winter break dates" added in a 39-xfail follow-up round: "When does
+    # winter break start and end?" scored 0.541, just below the
+    # clarification threshold. A plain "winter break" (no "dates" suffix)
+    # regressed two Dining Dollars/semester-rollover questions to
+    # Topic.ACADEMIC_CALENDAR instead.
+    Topic.ACADEMIC_CALENDAR: (
+        "the academic calendar, semester dates, winter break dates, and add/drop deadlines"
+    ),
     Topic.COURSE_REGISTRATION: "registering for classes, course registration",
     # "Illini-Alert emergency notifications" added in the
     # REGISTRATION-attractor follow-up round: "How do I sign up for
@@ -244,9 +288,18 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # (VectorRepository._build_filter), so a wrong topic here doesn't just
     # mislabel a page, it hides it from accessibility queries entirely and
     # pollutes results for whatever topic it got misclassified into.
+    # "registering with DRES" added in a 39-xfail follow-up round: "Do I
+    # need a doctor's note to register with DRES?" was losing to
+    # Topic.REGISTRATION purely off the word "register" -- despite the
+    # irony of adding register-adjacent wording to fix a REGISTRATION-
+    # attractor case, this fixed it cleanly with zero regressions
+    # (verified against the full 306-case suite) and, as a bonus, also
+    # fixed "Do libraries offer virtual reality resources?" which had been
+    # losing to this topic's old, more generic wording.
     Topic.ACCESSIBILITY: (
-        "disability accommodations, accessibility services, DRES, note-taking "
-        "and testing accommodations for students with disabilities"
+        "disability accommodations, accessibility services, registering "
+        "with DRES, note-taking and testing accommodations for students "
+        "with disabilities"
     ),
     # Added after a live run found "what career services does UIUC offer"
     # misclassified as international_student_services -- with no
