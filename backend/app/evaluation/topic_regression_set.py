@@ -15,16 +15,18 @@ strict=True in the test, so if a future topic_classifier.py change happens
 to fix one, pytest reports an XPASS failure -- that's the signal to delete
 the xfail_reason, not a bug in the test.
 
-The dominant pattern in this set has historically been Topic.REGISTRATION's
-generic description acting as an unintended default attractor for anything
-administrative-sounding ("sign up", "register with", "apply for") once
-other topics' descriptions get specific enough to narrow their own
-semantic footprint -- documented at length in topic_classifier.py's
-Topic.REGISTRATION and Topic.TRANSPORTATION comments, both fixed by
-rewriting as one coherent, specific sentence rather than a short generic
-phrase or a comma-list of bolted-on keywords. Remaining xfails follow the
-same shape on other topics; fixing them threatens the same regression risk
-seen on both of those, so they're tracked here rather than force-fixed.
+This set has driven three rounds of fixes so far, each verified against the
+full accumulated suite before being applied (see topic_classifier.py's
+comments on Topic.TRANSPORTATION, Topic.REGISTRATION, and the
+REGISTRATION-attractor-cluster follow-up round that touched HOUSING,
+STUDENT_EMPLOYMENT, INTERNATIONAL_STUDENT_SERVICES, VISA, TRANSPORTATION,
+HEALTH_INSURANCE, CAMPUS_RECREATION, CAMPUS_SAFETY, and CAREER_SERVICES).
+Remaining xfails follow the same handful of shapes -- a short/generic
+description on one topic winning by default over a weaker, more specific
+description on the correct topic -- but several rounds of attempted fixes
+for ADMISSIONS, ACADEMIC_CALENDAR, FINANCIAL_AID, SCHOLARSHIPS, and
+COURSE_REGISTRATION were each rejected for causing new regressions
+elsewhere and are tracked here rather than force-fixed.
 
 A handful of messages that look like plausible test cases were
 deliberately excluded, not included as extra cases:
@@ -206,7 +208,6 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "What's the earliest I can move into the dorms before classes start?",
         Topic.HOUSING,
-        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.632]"),
     ),
     TopicCase("What meal plans are available?", Topic.DINING),
     TopicCase("What is the difference between Classic Meals and Dining Dollars?", Topic.DINING),
@@ -270,14 +271,14 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.FINANCIAL_AID,
         xfail_reason=(
             "loses to INTERNATIONAL_STUDENT_SERVICES [currently: "
-            "international_student_services, 0.693]"
+            "international_student_services, 0.669]"
         ),
     ),
     TopicCase("Is the Illinois Commitment scholarship need-based?", Topic.FINANCIAL_AID),
     TopicCase(
         "Can I get a tuition waiver as a graduate assistant?",
         Topic.FINANCIAL_AID,
-        xfail_reason=("loses to OPT [currently: opt, 0.623]"),
+        xfail_reason=("loses to OPT [currently: student_employment, 0.624]"),
     ),
     TopicCase(
         "What scholarships are available for incoming freshmen?",
@@ -329,15 +330,10 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.STUDENT_EMPLOYMENT,
         xfail_reason=("loses to ACADEMIC_ADVISING [currently: academic_advising, 0.659]"),
     ),
-    TopicCase(
-        "Does working on campus affect my financial aid?",
-        Topic.STUDENT_EMPLOYMENT,
-        xfail_reason=("loses to HOUSING [currently: housing, 0.655]"),
-    ),
+    TopicCase("Does working on campus affect my financial aid?", Topic.STUDENT_EMPLOYMENT),
     TopicCase(
         "What's the difference between a graduate assistantship and work study?",
         Topic.STUDENT_EMPLOYMENT,
-        xfail_reason=("loses to OPT [currently: opt, 0.600]"),
     ),
     TopicCase(
         "What services does ISSS provide for international students?",
@@ -350,12 +346,11 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "What resources are available for international students on campus?",
         Topic.INTERNATIONAL_STUDENT_SERVICES,
-        xfail_reason=("loses to HOUSING [currently: housing, 0.688]"),
+        xfail_reason=("loses to HOUSING [currently: dining, 0.685]"),
     ),
     TopicCase(
         "What should international students do before they arrive on campus?",
         Topic.INTERNATIONAL_STUDENT_SERVICES,
-        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.667]"),
     ),
     TopicCase(
         "What documents should I bring when I first arrive at UIUC?",
@@ -378,13 +373,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("How long is my visa valid while I'm a student?", Topic.VISA),
     TopicCase("My I-20 has a typo, what do I do?", Topic.VISA),
     TopicCase("How do I renew my F-1 visa?", Topic.VISA),
-    TopicCase(
-        "What is SEVIS and why does it matter?",
-        Topic.VISA,
-        xfail_reason=(
-            "scores below the 0.55 clarification threshold entirely [currently: None, 0.488]"
-        ),
-    ),
+    TopicCase("What is SEVIS and why does it matter?", Topic.VISA),
     TopicCase("Can I travel outside the US and come back on my visa?", Topic.VISA),
     TopicCase("Does my visa expire if I stay in the US past my program end date?", Topic.VISA),
     TopicCase("What is Curricular Practical Training?", Topic.CPT),
@@ -419,11 +408,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         "How much storage do I get with my university email account?",
         Topic.TECHNOLOGY_SERVICES,
     ),
-    TopicCase(
-        "Where can I print documents on campus?",
-        Topic.TECHNOLOGY_SERVICES,
-        xfail_reason=("loses to HOUSING [currently: housing, 0.694]"),
-    ),
+    TopicCase("Where can I print documents on campus?", Topic.TECHNOLOGY_SERVICES),
     TopicCase(
         "What's the process for reporting a lost student ID?",
         Topic.TECHNOLOGY_SERVICES,
@@ -434,7 +419,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "Can I reserve a study room in the library?",
         Topic.LIBRARIES,
-        xfail_reason=("loses to HOUSING [currently: housing, 0.616]"),
+        xfail_reason=("loses to HOUSING [currently: housing, 0.633]"),
     ),
     TopicCase(
         "Do libraries offer virtual reality resources?",
@@ -469,27 +454,15 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("How do I renew my parking permit?", Topic.TRANSPORTATION),
     TopicCase("Does UIUC have a shuttle to the airport?", Topic.TRANSPORTATION),
     TopicCase("What's the process to appeal a parking ticket?", Topic.TRANSPORTATION),
-    TopicCase(
-        "Is there a night bus service on campus?",
-        Topic.TRANSPORTATION,
-        xfail_reason=("loses to CAMPUS_SAFETY [currently: campus_safety, 0.664]"),
-    ),
+    TopicCase("Is there a night bus service on campus?", Topic.TRANSPORTATION),
     TopicCase("How do I appeal a parking citation?", Topic.TRANSPORTATION),
     TopicCase("What's the fastest way from Midway Airport to campus?", Topic.TRANSPORTATION),
     TopicCase("Is there a campus map showing bus routes?", Topic.TRANSPORTATION),
     TopicCase("What's the closest airport to Champaign-Urbana?", Topic.TRANSPORTATION),
     TopicCase("Is the campus bus system free with my student ID?", Topic.TRANSPORTATION),
     TopicCase("How do I renew a parking permit that's about to expire?", Topic.TRANSPORTATION),
-    TopicCase(
-        "Do I need a car as a UIUC student?",
-        Topic.TRANSPORTATION,
-        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.695]"),
-    ),
-    TopicCase(
-        "Does UIUC have a bike share program?",
-        Topic.TRANSPORTATION,
-        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.627]"),
-    ),
+    TopicCase("Do I need a car as a UIUC student?", Topic.TRANSPORTATION),
+    TopicCase("Does UIUC have a bike share program?", Topic.TRANSPORTATION),
     TopicCase("How do I get a Zipcar or campus car-share membership?", Topic.TRANSPORTATION),
     TopicCase("Do I need health insurance as a student?", Topic.HEALTH_INSURANCE),
     TopicCase("How do I waive the student health insurance plan?", Topic.HEALTH_INSURANCE),
@@ -499,24 +472,16 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.HEALTH_INSURANCE,
         xfail_reason=(
             "loses to DINING -- documented, long-known residual (see topic_classifier.py) "
-            "[currently: dining, 0.650]"
+            "[currently: transportation, 0.654]"
         ),
     ),
     TopicCase(
         "Are international students required to have health insurance?",
         Topic.HEALTH_INSURANCE,
-        xfail_reason=(
-            "loses to INTERNATIONAL_STUDENT_SERVICES [currently: "
-            "international_student_services, 0.654]"
-        ),
     ),
     TopicCase("Can I opt out of the mandatory health insurance?", Topic.HEALTH_INSURANCE),
     TopicCase("Where's the closest place to see a doctor as a student?", Topic.HEALTH_INSURANCE),
-    TopicCase(
-        "Does UIUC offer graduate student health insurance?",
-        Topic.HEALTH_INSURANCE,
-        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.674]"),
-    ),
+    TopicCase("Does UIUC offer graduate student health insurance?", Topic.HEALTH_INSURANCE),
     TopicCase(
         "What's covered under the mandatory Student Health Insurance Plan?",
         Topic.HEALTH_INSURANCE,
@@ -528,11 +493,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("Does the student health plan cover prescriptions?", Topic.HEALTH_INSURANCE),
     TopicCase("What's the deadline to waive student health insurance?", Topic.HEALTH_INSURANCE),
     TopicCase("Is McKinley Health Center free to use?", Topic.HEALTH_INSURANCE),
-    TopicCase(
-        "Where can I get a flu shot on campus?",
-        Topic.HEALTH_INSURANCE,
-        xfail_reason=("loses to DINING [currently: dining, 0.630]"),
-    ),
+    TopicCase("Where can I get a flu shot on campus?", Topic.HEALTH_INSURANCE),
     TopicCase("Does the health center offer mental health counseling?", Topic.HEALTH_INSURANCE),
     TopicCase("How do I get a gym membership?", Topic.CAMPUS_RECREATION),
     TopicCase("What fitness facilities are available on campus?", Topic.CAMPUS_RECREATION),
@@ -540,31 +501,17 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "Does the campus have a swimming pool?",
         Topic.CAMPUS_RECREATION,
-        xfail_reason=("loses to HOUSING [currently: housing, 0.642]"),
+        xfail_reason=("loses to HOUSING [currently: housing, 0.639]"),
     ),
     TopicCase("Is the recreation center free for students?", Topic.CAMPUS_RECREATION),
-    TopicCase(
-        "Is the climbing wall open to all students?",
-        Topic.CAMPUS_RECREATION,
-        xfail_reason=("loses to STUDENT_ORGANIZATIONS [currently: student_organizations, 0.608]"),
-    ),
-    TopicCase(
-        "What intramural sports are offered each semester?",
-        Topic.CAMPUS_RECREATION,
-        xfail_reason=("loses to STUDENT_ORGANIZATIONS [currently: student_organizations, 0.630]"),
-    ),
+    TopicCase("Is the climbing wall open to all students?", Topic.CAMPUS_RECREATION),
+    TopicCase("What intramural sports are offered each semester?", Topic.CAMPUS_RECREATION),
     TopicCase("Can I rent kayaks or camping gear from the rec center?", Topic.CAMPUS_RECREATION),
     TopicCase(
         "Are group fitness classes included with my rec center membership?",
         Topic.CAMPUS_RECREATION,
     ),
-    TopicCase(
-        "Does the ARC have a rock climbing wall?",
-        Topic.CAMPUS_RECREATION,
-        xfail_reason=(
-            "scores below the 0.55 clarification threshold entirely [currently: None, 0.471]"
-        ),
-    ),
+    TopicCase("Does the ARC have a rock climbing wall?", Topic.CAMPUS_RECREATION),
     TopicCase("How do I register a new student organization?", Topic.STUDENT_ORGANIZATIONS),
     TopicCase("How many student organizations are there at UIUC?", Topic.STUDENT_ORGANIZATIONS),
     TopicCase("How do I join a student club?", Topic.STUDENT_ORGANIZATIONS),
@@ -643,11 +590,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("Who do I call if I feel unsafe walking at night on campus?", Topic.CAMPUS_SAFETY),
     TopicCase("What number do I call for a campus safety escort at night?", Topic.CAMPUS_SAFETY),
     TopicCase("Does UIUC have blue-light emergency phones on campus?", Topic.CAMPUS_SAFETY),
-    TopicCase(
-        "How do I sign up for Illini-Alert emergency notifications?",
-        Topic.CAMPUS_SAFETY,
-        xfail_reason=("loses to STUDENT_EMPLOYMENT [currently: student_employment, 0.599]"),
-    ),
+    TopicCase("How do I sign up for Illini-Alert emergency notifications?", Topic.CAMPUS_SAFETY),
     TopicCase("How do I apply for disability accommodations?", Topic.ACCESSIBILITY),
     TopicCase("What documentation do I need for accommodations?", Topic.ACCESSIBILITY),
     TopicCase("What is DRES?", Topic.ACCESSIBILITY),
@@ -663,16 +606,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
             "[currently: registration, 0.610]"
         ),
     ),
-    TopicCase(
-        "What career services does UIUC offer?",
-        Topic.CAREER_SERVICES,
-        xfail_reason=(
-            "loses to ADMISSIONS -- a nearly identical phrasing with 'like resume help' "
-            "appended passes (see tests/retrieval/test_topic_classifier.py), showing this "
-            "classification is fragile to small wording changes [currently: admissions, "
-            "0.697]"
-        ),
-    ),
+    TopicCase("What career services does UIUC offer?", Topic.CAREER_SERVICES),
     TopicCase("How do I get my resume reviewed?", Topic.CAREER_SERVICES),
     TopicCase("Does the Career Center help with job searching?", Topic.CAREER_SERVICES),
     TopicCase("How do I sign up for career coaching?", Topic.CAREER_SERVICES),
@@ -724,8 +658,8 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         None,
         xfail_reason=(
             "loses to CAMPUS_SAFETY -- a vague, on-its-face-ambiguous message should "
-            "trigger clarification, not a confident wrong guess [currently: "
-            "campus_safety, 0.579]"
+            "trigger clarification, not a confident wrong guess [currently: housing, "
+            "0.571]"
         ),
     ),
     TopicCase("asdlkfj random gibberish text", None),
@@ -737,7 +671,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
             "loses to ACCESSIBILITY -- there is deliberately no dedicated "
             "counseling/mental-health topic (see topic_classifier.py's corpus-hygiene "
             "history), so this should fall to clarification, not a confident wrong guess "
-            "[currently: accessibility, 0.614]"
+            "[currently: housing, 0.624]"
         ),
     ),
 )

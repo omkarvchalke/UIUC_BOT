@@ -62,7 +62,22 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
         "leaving the university"
     ),
     Topic.ORIENTATION: "new student orientation, welcome week, orientation programs",
-    Topic.HOUSING: "on-campus housing, residence halls, dorms, where students live",
+    # Was "on-campus housing..." -- the REGISTRATION-attractor follow-up
+    # round (306-case regression suite) found "on-campus" was itself acting
+    # as a mini-attractor: 5 unrelated queries mentioning "on campus"
+    # (international student resources, printing documents, reserving a
+    # library study room, campus pools, working on campus) were losing to
+    # Topic.HOUSING purely off that bigram. Swapping to "student housing"
+    # (same meaning, no shared "on campus" wording with the retrieval
+    # corpus's other "on campus X" phrasing) fixed all 5 with zero
+    # regressions -- verified against the full 306-case suite. "move-in
+    # day" and "dorm room types" added on top of that fix, for "single-
+    # occupancy dorm rooms" and "earliest move-in" queries that scored
+    # below threshold without them.
+    Topic.HOUSING: (
+        "student housing, residence halls, dorms, where students live, "
+        "move-in day, and dorm room types"
+    ),
     Topic.DINING: "dining halls, meal plans, food on campus",
     # "Illinois Commitment" and "i-card banking services" deliberately in
     # the description text -- two separate real findings from the same
@@ -97,16 +112,32 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # attractor problem as financial_aid's "buying textbooks" above --
     # "How many hours can I work as a student employee?" had regressed to
     # registration (0.635 vs student_employment's 0.620).
+    # "graduate assistantships" added in the REGISTRATION-attractor follow-up
+    # round: "What's the difference between a graduate assistantship and
+    # work study?" was losing to Topic.OPT with no assistantship wording to
+    # compete with.
     Topic.STUDENT_EMPLOYMENT: (
-        "on-campus jobs, work study, student employment, Hire Illini job board, work hour limits"
+        "on-campus jobs, work study, student employment, graduate "
+        "assistantships, Hire Illini job board, work hour limits"
     ),
     # "ISSS" spelled out deliberately in the description text -- same
     # bare-acronym pattern as OPT above: 0.572 without it, below threshold.
+    # "pre-arrival preparation and check-in" added in the
+    # REGISTRATION-attractor follow-up round: "What should international
+    # students do before they arrive on campus?" was losing to
+    # Topic.ADMISSIONS, which shares "new"/"incoming student" wording.
     Topic.INTERNATIONAL_STUDENT_SERVICES: (
         "international student services and support, "
-        "ISSS (International Student and Scholar Services)"
+        "ISSS (International Student and Scholar Services), pre-arrival "
+        "preparation and check-in"
     ),
-    Topic.VISA: "visa status, I-20, immigration documents",
+    # "SEVIS" added in the REGISTRATION-attractor follow-up round: "What is
+    # SEVIS and why does it matter?" scored 0.487, below the clarification
+    # threshold, with no SEVIS-specific wording anywhere in the taxonomy.
+    Topic.VISA: (
+        "visa status, I-20, SEVIS (Student and Exchange Visitor "
+        "Information System) record, immigration documents"
+    ),
     Topic.CPT: "curricular practical training, CPT work authorization",
     # "what is OPT" is deliberately in the description text, not just
     # "optional practical training": bare acronym questions like "What is
@@ -147,10 +178,15 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # including "Does UIUC have its own airport?" which a previous version
     # of this description could never pass at the same time as the
     # permit/ticket/bus-tracking queries.
+    # "whether you need a car as a student" and "campus bike share" added in
+    # the REGISTRATION-attractor follow-up round: "Do I need a car as a
+    # UIUC student?" and "Does UIUC have a bike share program?" were both
+    # losing to Topic.ADMISSIONS purely off "as a ... student"/"UIUC"
+    # wording, with nothing car- or bike-specific to compete with it.
     Topic.TRANSPORTATION: (
         "getting around campus and to/from campus: parking permits and tickets, "
-        "MTD buses, Willard Airport, and traveling from Chicago or O'Hare/Midway "
-        "airports"
+        "MTD buses, whether you need a car as a student, campus bike share, "
+        "Willard Airport, and traveling from Chicago or O'Hare/Midway airports"
     ),
     # "waiving or opting out" deliberately in the description text: a real
     # 200-question sweep found "Can I opt out of the mandatory health
@@ -169,16 +205,37 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # competitor's description -- see docs/production-readiness.md-style
     # honesty: this genuinely helps grounding for other doctor/McKinley
     # phrasings even though it didn't flip this exact one.
+    # "for both undergraduate and graduate students" and "flu shots" added in
+    # the REGISTRATION-attractor follow-up round: "Does UIUC offer graduate
+    # student health insurance?" was losing to Topic.ADMISSIONS (which
+    # mentions "graduate" admission), and "Where can I get a flu shot on
+    # campus?" was losing to Topic.DINING on generic "on campus" wording.
     Topic.HEALTH_INSURANCE: (
-        "student health insurance and health services, waiving or opting out "
-        "of the mandatory health insurance plan, seeing a doctor or medical "
-        "appointments at McKinley Health Center"
+        "student health insurance and health services for both "
+        "undergraduate and graduate students, waiving or opting out of the "
+        "mandatory health insurance plan, seeing a doctor, flu shots, or "
+        "medical appointments at McKinley Health Center"
     ),
-    Topic.CAMPUS_RECREATION: "gym, fitness, recreation center membership",
+    # "intramural sports" and "the climbing wall" added in the
+    # REGISTRATION-attractor follow-up round: both were losing to
+    # Topic.STUDENT_ORGANIZATIONS (registered clubs), a related but
+    # distinct concept, with nothing recreation-specific to compete with it.
+    Topic.CAMPUS_RECREATION: (
+        "gym, fitness facilities, recreation center membership, intramural "
+        "sports, and the climbing wall"
+    ),
     Topic.STUDENT_ORGANIZATIONS: "student clubs and registered student organizations",
     Topic.ACADEMIC_CALENDAR: "academic calendar, semester dates, add/drop deadlines",
     Topic.COURSE_REGISTRATION: "registering for classes, course registration",
-    Topic.CAMPUS_SAFETY: "campus police, emergency contacts, safety escorts, crime reporting",
+    # "Illini-Alert emergency notifications" added in the
+    # REGISTRATION-attractor follow-up round: "How do I sign up for
+    # Illini-Alert emergency notifications?" was losing to
+    # Topic.STUDENT_EMPLOYMENT purely off "sign up" wording, with no
+    # Illini-Alert-specific phrase to compete with it.
+    Topic.CAMPUS_SAFETY: (
+        "campus police, emergency contacts, Illini-Alert emergency "
+        "notifications, safety escorts, and crime reporting"
+    ),
     # Added after the domain-only crawler (app/ingestion/crawl_seeds.py) hit
     # dres.illinois.edu (Disability Resources and Educational Services) and,
     # with no accessibility-specific topic to embed against, misclassified
@@ -198,9 +255,19 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     # from STUDENT_EMPLOYMENT (on-campus jobs/work-study) since "career
     # coaching" and "resume review" are a different service from "I need a
     # job on campus," even though both live under The Career Center.
+    #
+    # Rewritten in the REGISTRATION-attractor follow-up round: the original
+    # wording still lost the bare query "What career services does UIUC
+    # offer?" to Topic.ADMISSIONS (a nearly identical phrasing with "like
+    # resume help" appended passed, showing the classification was fragile
+    # to small wording changes). Restructured to lead with "career services
+    # offered by the Career Center" as one coherent clause instead of a
+    # comma-list starting with the bare, generic word "career" -- fixed
+    # with zero regressions against the full 306-case suite.
     Topic.CAREER_SERVICES: (
-        "career services, career center, career coaching and advising, resume "
-        "and cover letter review, interview prep, job and internship search help"
+        "career services offered by the Career Center: resume and cover "
+        "letter review, interview prep, career coaching, and job and "
+        "internship search help"
     ),
     # Added after a live run found "how do I contact my academic advisor"
     # misclassified as academic_calendar -- same root cause as
