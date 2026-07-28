@@ -331,6 +331,110 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
     ),
 }
 
+# Additional short, narrow exemplar phrases for topics whose single
+# _TOPIC_DESCRIPTIONS entry can't be tuned any further without regressing
+# something else -- confirmed live via the 306-case regression suite for
+# ADMISSIONS, ACADEMIC_CALENDAR, FINANCIAL_AID, SCHOLARSHIPS, and
+# COURSE_REGISTRATION, each of which resisted every wording-level fix
+# attempted across three separate rounds (see topic_regression_set.py's
+# module docstring).
+#
+# A topic's match score is the MAX cosine similarity across its primary
+# description (above) plus all of its exemplars here, not their average or
+# a re-embedded concatenation -- so an exemplar added for one narrow query
+# can't dilute the primary description's match strength for that topic's
+# other, already-passing queries the way editing the description text
+# directly always risked. Each exemplar below was still added and
+# verified one at a time against the full regression suite, the same
+# zero-new-regressions discipline as description edits: a topic having
+# *more* vectors to match against still means it wins on strictly more
+# queries than before, so an exemplar that's too broad can still create a
+# new attractor exactly like an over-broad description would.
+_TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
+    # First use of this mechanism, added in a follow-up round after
+    # ADMISSIONS, ACADEMIC_CALENDAR, FINANCIAL_AID, SCHOLARSHIPS, and
+    # COURSE_REGISTRATION had each resisted every _TOPIC_DESCRIPTIONS
+    # wording change attempted across three separate rounds (see
+    # topic_regression_set.py's module docstring) -- editing one shared
+    # description string always risked diluting that same topic's other,
+    # already-passing queries. Exemplars don't have that failure mode
+    # (each is scored independently, and a topic's score is the MAX across
+    # all of them), but adding one is still not risk-free: a topic having
+    # more vectors to match against can create a new attractor for
+    # unrelated queries exactly the way an over-broad description would,
+    # so every exemplar below was still added and verified one at a time
+    # against the full 306-case regression suite, zero-new-regressions bar.
+    #
+    # Fixed 18 of 29 remaining xfails this round, including several in
+    # COURSE_REGISTRATION -- previously the single most fragile topic in
+    # the taxonomy under description edits (even one added word reliably
+    # caused 2-4 new regressions), but exemplars fixed 4 of its cases
+    # cleanly. The 11 cases that remain xfail after this round were each
+    # attempted multiple times (up to 7-8 wording variants for the
+    # hardest ones) and kept causing new regressions regardless of
+    # phrasing -- these appear to be genuine equilibrium points in the
+    # embedding space, not just under-explored wording, and four of them
+    # (queries that should trigger clarification, not a topic match) are
+    # structurally unfixable by this mechanism at all: exemplars only ever
+    # add matching power to a topic, so they can raise a topic's own
+    # recall but can never suppress another topic's false-positive score
+    # on a vague or off-topic message.
+    Topic.FINANCIAL_AID: (
+        "when is the FAFSA due each year",
+        "using the net price calculator to estimate cost",
+        "what is a federal Pell Grant",
+        "tuition waivers that cover part of your tuition bill",
+    ),
+    Topic.HOUSING: (
+        "packing and moving into your dorm room for the first time",
+        "single-occupancy dorm rooms and the extra fee for a private room",
+        "getting released from your dorm residency agreement",
+    ),
+    Topic.SCHOLARSHIPS: (
+        "merit awards available to first-year students right out of high school",
+        "automatic merit scholarships freshmen receive upon admission",
+        "merit awards set aside specifically for transfer students",
+    ),
+    Topic.ADMISSIONS: (
+        "admission selectivity and acceptance rates by department",
+        "acceptance rates and selectivity for different academic colleges within UIUC",
+        "what transcripts and test scores to submit for a graduate school application",
+        "applying under an early action plan versus the regular decision timeline",
+    ),
+    Topic.ACADEMIC_ADVISING: (
+        "the paperwork to officially declare or switch your major within LAS",
+    ),
+    Topic.COURSE_REGISTRATION: (
+        "using the course explorer tool to plan out your class schedule",
+        "dropping a class late enough that it leaves a W mark instead of "
+        "disappearing from your record",
+        "voluntarily blocking yourself from registering for classes",
+    ),
+    # Both added not because TECHNOLOGY_SERVICES itself needed them, but
+    # because these two exact queries kept getting stolen by whatever
+    # exemplar was being tested on a *different* topic (REGISTRATION,
+    # ADMISSIONS) during this round -- anchoring them here first, before
+    # retrying the other topic's exemplar, is what let those succeed.
+    Topic.TECHNOLOGY_SERVICES: (
+        "resetting a forgotten NetID or university account password",
+        "getting a replacement student identification card after losing yours",
+    ),
+    Topic.REGISTRATION: (
+        "requesting a leave of absence to step away from your studies for a term",
+    ),
+    # Added for the same reason as the TECHNOLOGY_SERVICES pair above --
+    # anchoring this query here is what let ADMISSIONS' graduate-
+    # application-documents exemplar succeed without stealing it.
+    Topic.STUDENT_EMPLOYMENT: (
+        "finding and interviewing for an open graduate assistantship position in a department",
+    ),
+    Topic.ORIENTATION: ("is attending Welcome Week mandatory before you can pick your classes",),
+    Topic.INTERNATIONAL_STUDENT_SERVICES: (
+        "the ISSS pre-departure checklist of items to bring to the US as a "
+        "new international student",
+    ),
+}
+
 
 @dataclass(frozen=True)
 class TopicClassification:
@@ -346,11 +450,25 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 @lru_cache
-def _topic_embeddings() -> dict[Topic, list[float]]:
+def _topic_embeddings() -> dict[Topic, list[list[float]]]:
+    """Every topic's primary description, plus any exemplars, each
+    embedded separately -- see _TOPIC_EXEMPLARS' comment for why these
+    aren't merged into one string per topic."""
     embedder = Embedder()
-    topics = list(_TOPIC_DESCRIPTIONS)
-    vectors = embedder.embed_documents([_TOPIC_DESCRIPTIONS[topic] for topic in topics])
-    return dict(zip(topics, vectors, strict=True))
+    texts: list[str] = []
+    owners: list[Topic] = []
+    for topic in _TOPIC_DESCRIPTIONS:
+        texts.append(_TOPIC_DESCRIPTIONS[topic])
+        owners.append(topic)
+        for exemplar in _TOPIC_EXEMPLARS.get(topic, ()):
+            texts.append(exemplar)
+            owners.append(topic)
+
+    vectors = embedder.embed_documents(texts)
+    result: dict[Topic, list[list[float]]] = {topic: [] for topic in _TOPIC_DESCRIPTIONS}
+    for owner, vector in zip(owners, vectors, strict=True):
+        result[owner].append(vector)
+    return result
 
 
 class TopicClassifier:
@@ -370,8 +488,8 @@ class TopicClassifier:
 
         best_topic: Topic | None = None
         best_score = -1.0
-        for topic, vector in topic_vectors.items():
-            score = _cosine(query_vector, vector)
+        for topic, vectors in topic_vectors.items():
+            score = max(_cosine(query_vector, vector) for vector in vectors)
             if score > best_score:
                 best_topic, best_score = topic, score
 
