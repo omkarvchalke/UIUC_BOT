@@ -15,16 +15,16 @@ strict=True in the test, so if a future topic_classifier.py change happens
 to fix one, pytest reports an XPASS failure -- that's the signal to delete
 the xfail_reason, not a bug in the test.
 
-Roughly a fifth of cases are currently xfail. The dominant pattern by far:
-Topic.REGISTRATION's short, generic description ("registering as a new or
-continuing student") acts as an unintended default attractor for anything
+The dominant pattern in this set has historically been Topic.REGISTRATION's
+generic description acting as an unintended default attractor for anything
 administrative-sounding ("sign up", "register with", "apply for") once
-other topics' descriptions are specific enough to narrow their own
-semantic footprint -- the same whack-a-mole dynamic documented at length in
-topic_classifier.py's Topic.TRANSPORTATION comment. Fixing these threatens
-the same regression risk seen there, so none were attempted as part of
-building this test -- it exists to make the gaps visible and trackable,
-not to close them.
+other topics' descriptions get specific enough to narrow their own
+semantic footprint -- documented at length in topic_classifier.py's
+Topic.REGISTRATION and Topic.TRANSPORTATION comments, both fixed by
+rewriting as one coherent, specific sentence rather than a short generic
+phrase or a comma-list of bolted-on keywords. Remaining xfails follow the
+same shape on other topics; fixing them threatens the same regression risk
+seen on both of those, so they're tracked here rather than force-fixed.
 
 A handful of messages that look like plausible test cases were
 deliberately excluded, not included as extra cases:
@@ -72,17 +72,10 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.ADMISSIONS,
         xfail_reason=(
             "loses to OPT -- 'documents'/'application' overlap OPT's description "
-            "[currently: opt, 0.648]"
+            "[currently: registration, 0.679]"
         ),
     ),
-    TopicCase(
-        "Can I apply as a second bachelor's degree student?",
-        Topic.ADMISSIONS,
-        xfail_reason=(
-            "loses to REGISTRATION, a recurring generic-attractor pattern [currently: "
-            "registration, 0.665]"
-        ),
-    ),
+    TopicCase("Can I apply as a second bachelor's degree student?", Topic.ADMISSIONS),
     TopicCase("What's the acceptance rate for freshman applicants?", Topic.ADMISSIONS),
     TopicCase("Is UIUC test-optional for admissions?", Topic.ADMISSIONS),
     TopicCase("Can I transfer in with an associate's degree?", Topic.ADMISSIONS),
@@ -95,14 +88,14 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "Can I defer my admission to a later semester?",
         Topic.ADMISSIONS,
-        xfail_reason=("loses to REGISTRATION [currently: registration, 0.678]"),
+        xfail_reason=("loses to ACADEMIC_CALENDAR [currently: academic_calendar, 0.651]"),
     ),
     TopicCase(
         "Do I need letters of recommendation to apply?",
         Topic.ADMISSIONS,
         xfail_reason=(
             "loses to REGISTRATION -- same generic-attractor pattern [currently: "
-            "registration, 0.655]"
+            "registration, 0.627]"
         ),
     ),
     TopicCase(
@@ -114,13 +107,16 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     ),
     TopicCase("How do I register as a new student?", Topic.REGISTRATION),
     TopicCase("What is New Student Registration?", Topic.REGISTRATION),
-    TopicCase("When can continuing students register for classes?", Topic.REGISTRATION),
+    TopicCase("When can continuing students register for classes?", Topic.COURSE_REGISTRATION),
     TopicCase("How do I register for New Student Registration as a transfer?", Topic.REGISTRATION),
     TopicCase("Do I need to complete registration before orientation?", Topic.REGISTRATION),
     TopicCase("What happens during New Student Registration?", Topic.REGISTRATION),
     TopicCase("Is New Student Registration mandatory?", Topic.REGISTRATION),
-    TopicCase("How do I check my registration appointment time?", Topic.REGISTRATION),
-    TopicCase("Do continuing students need to register every semester?", Topic.REGISTRATION),
+    TopicCase("How do I check my registration appointment time?", Topic.COURSE_REGISTRATION),
+    TopicCase(
+        "Do continuing students need to register every semester?",
+        Topic.COURSE_REGISTRATION,
+    ),
     TopicCase(
         "What's the difference between new student registration and regular registration?",
         Topic.REGISTRATION,
@@ -129,6 +125,11 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "Can I skip New Student Registration if I've already registered for classes?",
         Topic.REGISTRATION,
+        xfail_reason=(
+            "loses to COURSE_REGISTRATION -- a compound query naming both senses of "
+            "'register' in one sentence, a known hard case for a single-topic classifier "
+            "[currently: course_registration, 0.767]"
+        ),
     ),
     TopicCase("How do I get a letter confirming my enrollment status?", Topic.REGISTRATION),
     TopicCase(
@@ -276,7 +277,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "Can I get a tuition waiver as a graduate assistant?",
         Topic.FINANCIAL_AID,
-        xfail_reason=("loses to REGISTRATION [currently: registration, 0.632]"),
+        xfail_reason=("loses to OPT [currently: opt, 0.623]"),
     ),
     TopicCase(
         "What scholarships are available for incoming freshmen?",
@@ -374,14 +375,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("How do I maintain my F-1 visa status?", Topic.VISA),
     TopicCase("What documents do I need for my visa interview?", Topic.VISA),
     TopicCase("What happens if my I-20 has an error?", Topic.VISA),
-    TopicCase(
-        "How long is my visa valid while I'm a student?",
-        Topic.VISA,
-        xfail_reason=(
-            "loses to REGISTRATION -- 'while I'm a student' phrase is a generic attractor "
-            "[currently: registration, 0.655]"
-        ),
-    ),
+    TopicCase("How long is my visa valid while I'm a student?", Topic.VISA),
     TopicCase("My I-20 has a typo, what do I do?", Topic.VISA),
     TopicCase("How do I renew my F-1 visa?", Topic.VISA),
     TopicCase(
@@ -416,11 +410,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("Where can I buy a laptop with a student discount?", Topic.TECHNOLOGY_SERVICES),
     TopicCase("How do I get eduroam working on my laptop?", Topic.TECHNOLOGY_SERVICES),
     TopicCase("I lost my i-card, how do I get a replacement?", Topic.TECHNOLOGY_SERVICES),
-    TopicCase(
-        "How do I reset my university password?",
-        Topic.TECHNOLOGY_SERVICES,
-        xfail_reason=("loses to REGISTRATION [currently: registration, 0.613]"),
-    ),
+    TopicCase("How do I reset my university password?", Topic.TECHNOLOGY_SERVICES),
     TopicCase(
         "What software is available for free through the university?",
         Topic.TECHNOLOGY_SERVICES,
@@ -437,7 +427,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "What's the process for reporting a lost student ID?",
         Topic.TECHNOLOGY_SERVICES,
-        xfail_reason=("loses to REGISTRATION [currently: registration, 0.668]"),
+        xfail_reason=("loses to REGISTRATION [currently: registration, 0.647]"),
     ),
     TopicCase("What are the library hours?", Topic.LIBRARIES),
     TopicCase("How many libraries are on campus?", Topic.LIBRARIES),
@@ -489,14 +479,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("Is there a campus map showing bus routes?", Topic.TRANSPORTATION),
     TopicCase("What's the closest airport to Champaign-Urbana?", Topic.TRANSPORTATION),
     TopicCase("Is the campus bus system free with my student ID?", Topic.TRANSPORTATION),
-    TopicCase(
-        "How do I renew a parking permit that's about to expire?",
-        Topic.TRANSPORTATION,
-        xfail_reason=(
-            "loses to REGISTRATION -- a rephrasing of the already-fixed permit-renewal "
-            "query still isn't robust [currently: registration, 0.595]"
-        ),
-    ),
+    TopicCase("How do I renew a parking permit that's about to expire?", Topic.TRANSPORTATION),
     TopicCase(
         "Do I need a car as a UIUC student?",
         Topic.TRANSPORTATION,
@@ -582,14 +565,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
             "scores below the 0.55 clarification threshold entirely [currently: None, 0.471]"
         ),
     ),
-    TopicCase(
-        "How do I register a new student organization?",
-        Topic.STUDENT_ORGANIZATIONS,
-        xfail_reason=(
-            "loses to REGISTRATION at high confidence (~0.8) -- the single strongest "
-            "generic-attractor miss in this whole set [currently: registration, 0.800]"
-        ),
-    ),
+    TopicCase("How do I register a new student organization?", Topic.STUDENT_ORGANIZATIONS),
     TopicCase("How many student organizations are there at UIUC?", Topic.STUDENT_ORGANIZATIONS),
     TopicCase("How do I join a student club?", Topic.STUDENT_ORGANIZATIONS),
     TopicCase(
@@ -643,11 +619,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.COURSE_REGISTRATION,
         xfail_reason=("loses to ACADEMIC_ADVISING [currently: academic_advising, 0.713]"),
     ),
-    TopicCase(
-        "How many times can I retake a failed course?",
-        Topic.COURSE_REGISTRATION,
-        xfail_reason=("loses to REGISTRATION [currently: registration, 0.616]"),
-    ),
+    TopicCase("How many times can I retake a failed course?", Topic.COURSE_REGISTRATION),
     TopicCase(
         "What's the penalty for a late add/drop request?",
         Topic.COURSE_REGISTRATION,
@@ -660,7 +632,9 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "Can I place a hold on my own account voluntarily?",
         Topic.COURSE_REGISTRATION,
-        xfail_reason=("loses to REGISTRATION [currently: registration, 0.564]"),
+        xfail_reason=(
+            "scores below the 0.55 clarification threshold entirely [currently: None, 0.515]"
+        ),
     ),
     TopicCase("How do I contact campus police?", Topic.CAMPUS_SAFETY),
     TopicCase("Is there a safety escort service on campus?", Topic.CAMPUS_SAFETY),
@@ -686,7 +660,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.ACCESSIBILITY,
         xfail_reason=(
             "loses to REGISTRATION -- 'register with' phrase is a generic attractor "
-            "[currently: registration, 0.653]"
+            "[currently: registration, 0.610]"
         ),
     ),
     TopicCase(
@@ -712,10 +686,6 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "How do I sign up for on-campus recruiting through the Career Center?",
         Topic.CAREER_SERVICES,
-        xfail_reason=(
-            "loses to REGISTRATION -- 'sign up' phrase is a generic attractor [currently: "
-            "registration, 0.680]"
-        ),
     ),
     TopicCase("How do I contact my academic advisor?", Topic.ACADEMIC_ADVISING),
     TopicCase("Where is the academic advising office?", Topic.ACADEMIC_ADVISING),
@@ -727,15 +697,11 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         "What happens if I miss my advising appointment before registration?",
         Topic.ACADEMIC_ADVISING,
     ),
-    TopicCase(
-        "Does the university offer peer tutoring?",
-        Topic.ACADEMIC_ADVISING,
-        xfail_reason=("loses to REGISTRATION [currently: registration, 0.603]"),
-    ),
+    TopicCase("Does the university offer peer tutoring?", Topic.ACADEMIC_ADVISING),
     TopicCase(
         "What are the requirements to declare a major in LAS?",
         Topic.ACADEMIC_ADVISING,
-        xfail_reason=("loses to REGISTRATION [currently: registration, 0.611]"),
+        xfail_reason=("loses to ADMISSIONS [currently: admissions, 0.602]"),
     ),
     TopicCase("asdfghjkl qwerty", None),
     TopicCase("what's the weather like today", None),

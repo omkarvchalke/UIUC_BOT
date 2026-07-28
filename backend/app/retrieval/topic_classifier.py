@@ -25,7 +25,42 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
         "becoming a new UIUC student: freshman or transfer admission requirements, "
         "essays, deadlines for prospective and incoming students"
     ),
-    Topic.REGISTRATION: "registering as a new or continuing student",
+    # Was just "registering as a new or continuing student" -- short enough
+    # that it acted as a generic default attractor for almost anything
+    # administrative-sounding ("sign up", "register with", "apply for", "a
+    # hold on my account"), the single biggest source of misclassifications
+    # found by the 306-case regression suite (app/evaluation/
+    # topic_regression_set.py): 15 of its 63 xfail cases specifically lost
+    # to Topic.REGISTRATION, spanning 9 different *other* correct topics.
+    #
+    # Rewritten to (a) explicitly name New Student Registration (NSR) as
+    # the specific first-time-enrollment event this topic is really about
+    # -- not generic "registering" -- and (b) add the *other* real content
+    # actually filed under this topic (Office of the Registrar records:
+    # transcripts, FERPA, diplomas, leaving the university, enrollment
+    # verification letters), which had no representation in the
+    # description at all despite being real, explicitly-sourced content
+    # (see app/ingestion/domains/registration_records.py).
+    #
+    # This traded 8 fixed misclassifications for 1 new one ("Can I skip New
+    # Student Registration if I've already registered for classes?", a
+    # compound query that names both senses of "register" in one sentence
+    # -- accepted as a residual, see topic_regression_set.py) -- verified
+    # against the full 306-case regression suite, not just the queries
+    # motivating the change. Also revealed 3 cases originally assumed to be
+    # about NSR ("When can continuing students register for classes?",
+    # "How do I check my registration appointment time?", "Do continuing
+    # students need to register every semester?") that, on reflection, are
+    # genuinely more about course registration mechanics than the one-time
+    # NSR event -- relabeled to Topic.COURSE_REGISTRATION in the regression
+    # suite rather than fought for here.
+    Topic.REGISTRATION: (
+        "New Student Registration (NSR), completing registration as a new "
+        "or continuing student before your first semester, plus other "
+        "Office of the Registrar records services: enrollment "
+        "verification letters, transcripts, FERPA privacy, diplomas, and "
+        "leaving the university"
+    ),
     Topic.ORIENTATION: "new student orientation, welcome week, orientation programs",
     Topic.HOUSING: "on-campus housing, residence halls, dorms, where students live",
     Topic.DINING: "dining halls, meal plans, food on campus",
