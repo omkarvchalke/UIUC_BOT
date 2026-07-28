@@ -37,8 +37,27 @@ them (queries that should trigger clarification, not a topic match) are
 structurally unfixable by the exemplar mechanism: exemplars only ever add
 matching power to a topic, so they can raise a topic's own recall but can
 never suppress another topic's false-positive score on a vague or
-off-topic message -- fixing those needs a different mechanism entirely
-(e.g. a margin/runner-up check, not just more vectors).
+off-topic message.
+
+A confidence-margin check (requiring the top score to beat the runner-up
+by some minimum gap, not just clear the absolute 0.55 threshold) was
+investigated as the natural next mechanism for exactly these 4 cases --
+and rejected before ever touching the classifier, based on the real
+margin distribution across this suite. The margin does not correlate
+with correctness here: over a dozen genuinely CORRECT classifications
+win by a margin of 0.001-0.005 (e.g. "How do I renew my F-1 visa?" beats
+its runner-up by 0.001), tighter than 3 of the 4 target cases. A margin
+threshold loose enough to spare those correct cases wouldn't catch "tell
+me about stuff" (margin 0.006) either. Raising the absolute threshold
+instead doesn't work any better: "What mental health resources are
+available to students?" scores 0.624, but 45 separate CORRECT
+classifications also fall in the 0.55-0.63 range, so excluding it would
+turn 45 good answers into unnecessary clarifying questions. These 4 are
+accepted as permanent residuals of the current design (per-topic cosine
+similarity against a fixed set of vectors, argmax with one global
+threshold) rather than a gap waiting for the right threshold tweak --
+a real fix would need a fundamentally different signal than more
+vectors or a different cutoff on the same score.
 
 A handful of messages that look like plausible test cases were
 deliberately excluded, not included as extra cases:
