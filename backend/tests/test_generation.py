@@ -100,6 +100,63 @@ async def test_generate_only_draws_from_the_top_max_source_chunks() -> None:
     assert 6 not in result.citation_indices
 
 
+async def test_generate_prefers_a_longer_tied_sentence_over_a_short_label_fragment() -> None:
+    # Regression test for a real bug found live: "How can I file for CPT?"
+    # against a real ISSS chunk picked "CPT application form ." -- a
+    # near-empty section-label fragment -- over much more substantive
+    # sentences later in the same chunk, because "cpt" (the only
+    # distinctive query term after stopword removal) appears in most
+    # sentences of a CPT-specific page, so they all tied on overlap and
+    # the old first-sentence-wins tie-break just kept whichever came first.
+    generator = ExtractiveAnswerGenerator()
+    chunk = _chunk(
+        content=(
+            "CPT application form . Once you complete the form, a notification will "
+            "be sent to your academic advisor by email with instructions and a link "
+            "to submit their section of the application. Make sure all sections of "
+            "the CPT application form are completed correctly before submitting to "
+            "ISSS."
+        )
+    )
+
+    result = await generator.generate(
+        "How can I file for CPT?", [chunk], context="", history=[], student_type=None
+    )
+
+    assert result.grounded is True
+    assert "Make sure all sections of the CPT application form" in result.text
+    assert "CPT application form .\n" not in result.text
+    assert not result.text.strip().endswith("CPT application form .")
+
+
+async def test_generate_treats_line_breaks_as_sentence_boundaries() -> None:
+    # Companion to the chunking-level regression test
+    # (test_merged_lines_keep_their_original_separator_not_a_bare_space):
+    # even chunk content that already has a bare "\n" between two
+    # unpunctuated bullet points (not just newly-chunked content) must
+    # still be split into separate sentences here, not collapsed into one
+    # run-on blob by treating "\n" the same as an ordinary space.
+    generator = ExtractiveAnswerGenerator()
+    chunk = _chunk(
+        content=(
+            "Training which is required by the degree program always meets the "
+            "requirements for CPT, regardless of whether or not academic credit is "
+            "received for the work\n"
+            "CPT is authorized by ISSS upon receipt of the proper application "
+            "materials, which are outlined below."
+        )
+    )
+
+    result = await generator.generate(
+        "How is CPT authorized?", [chunk], context="", history=[], student_type=None
+    )
+
+    assert result.grounded is True
+    assert "work\nCPT is authorized" not in result.text
+    assert "CPT is authorized by ISSS upon receipt of the proper application" in result.text
+    assert "regardless of whether or not academic credit is received for the work" not in result.text
+
+
 async def test_generate_falls_back_to_full_chunk_when_nothing_overlaps_the_query() -> None:
     generator = ExtractiveAnswerGenerator()
     chunk = _chunk(content="Library hours are posted on the library website.")

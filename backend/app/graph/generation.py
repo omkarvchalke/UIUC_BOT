@@ -38,10 +38,24 @@ def _tokenize(text: str) -> set[str]:
 
 
 def _split_sentences(text: str) -> list[str]:
-    normalized = re.sub(r"\s+", " ", text).strip()
-    if not normalized:
-        return []
-    return [s.strip() for s in _SENTENCE_SPLIT_PATTERN.split(normalized) if s.strip()]
+    """Splits on line breaks first, *then* on sentence-ending punctuation
+    within each line -- not just `.!?` -- since a chunk's newlines already
+    mark real boundaries the source page itself drew (list items, headings)
+    that don't necessarily end in punctuation. Confirmed live: a CPT page's
+    <li> items ("...regardless of whether or not academic credit is
+    received for the work", "Training which is not required...") are each
+    a complete bullet point but don't end in periods; collapsing `\\n` to a
+    plain space (the old behavior, `re.sub(r"\\s+", " ", text)`) glued 3
+    separate bullets into one unreadable run-on "sentence" with no way to
+    recover the boundaries afterward.
+    """
+    sentences: list[str] = []
+    for line in text.split("\n"):
+        normalized = re.sub(r"[ \t]+", " ", line).strip()
+        if not normalized:
+            continue
+        sentences.extend(s.strip() for s in _SENTENCE_SPLIT_PATTERN.split(normalized) if s.strip())
+    return sentences
 
 
 _GREETING_ANSWER = (
@@ -125,11 +139,18 @@ class ExtractiveAnswerGenerator:
             sentences = _split_sentences(chunk["content"])
             if not sentences:
                 continue
-            best_sentence, best_overlap = sentences[0], -1
+            # Tie-break on length, not just first-found: confirmed live, a
+            # query whose only distinctive term ("cpt") appears in nearly
+            # every sentence of a CPT-specific page ties most of them at
+            # the same overlap score, and the first-sentence-wins default
+            # then picked a near-empty section-label fragment ("CPT
+            # application form .") over substantially more informative
+            # sentences later in the same chunk that tied it on overlap.
+            best_sentence, best_overlap, best_length = sentences[0], -1, -1
             for sentence in sentences:
                 overlap = len(query_terms & _tokenize(sentence))
-                if overlap > best_overlap:
-                    best_sentence, best_overlap = sentence, overlap
+                if (overlap, len(sentence)) > (best_overlap, best_length):
+                    best_sentence, best_overlap, best_length = sentence, overlap, len(sentence)
             # Different pages sometimes share boilerplate ("check the USCIS
             # website...") -- confirmed live, two distinct chunks both
             # scoring the same sentence as their best match. Skip rather
