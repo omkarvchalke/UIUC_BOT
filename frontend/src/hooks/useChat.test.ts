@@ -201,10 +201,52 @@ describe("useChat", () => {
       question: "How do I apply for OPT?",
       answer: "Here's the answer.",
       rating: "helpful",
+      topic: null,
+      citations: [],
     });
 
     const stored = JSON.parse(localStorage.getItem("illiniguide.history.session-7") ?? "[]");
     expect(stored[1].feedback).toBe("helpful");
+  });
+
+  it("submitFeedback forwards the answer's topic and citations to the API", async () => {
+    // Regression test for the retrieval-tuning feature: the backend needs
+    // topic + citation rerank_scores snapshotted onto feedback to know
+    // which chunks a rated-down answer actually cited (see
+    // app/models/feedback.py). Confirm a populated (not null/empty) case
+    // forwards those exact values, not just the null-case above.
+    const citation = {
+      title: "F-1 CPT",
+      url: "https://isss.illinois.edu/students/employment/f1-cpt/",
+      department: "International Student and Scholar Services",
+      topic: "cpt",
+      subtopic: null,
+      fused_score: 0.03,
+      rerank_score: 5.2,
+    };
+    vi.spyOn(chatApi, "sendChatMessage").mockResolvedValue({
+      answer: "Submit the CPT application form to ISSS.",
+      grounded: true,
+      needs_clarification: false,
+      citations: [citation],
+      topic: "cpt",
+      classification_confidence: 0.79,
+    });
+    const feedbackSpy = vi.spyOn(chatApi, "sendFeedback").mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useChat("session-8"));
+    await act(async () => {
+      await result.current.sendMessage("How can I file for CPT?");
+    });
+    const assistantMessageId = result.current.messages[1].id;
+
+    await act(async () => {
+      await result.current.submitFeedback(assistantMessageId, "helpful");
+    });
+
+    expect(feedbackSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: "cpt", citations: [citation] }),
+    );
   });
 
   it("submitFeedback reverts the optimistic mark if the API call fails", async () => {

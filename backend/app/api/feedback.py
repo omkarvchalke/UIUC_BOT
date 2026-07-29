@@ -19,6 +19,8 @@ async def submit_feedback(
             answer=payload.answer,
             rating=payload.rating,
             comment=payload.comment,
+            topic=payload.topic,
+            citations=payload.citations,
         )
     except SessionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

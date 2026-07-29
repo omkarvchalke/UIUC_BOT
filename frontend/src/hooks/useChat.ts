@@ -156,6 +156,8 @@ export function useChat(sessionId: string | null): UseChatResult {
           question: message.question ?? "",
           answer: message.content,
           rating,
+          topic: message.topic ?? null,
+          citations: message.citations ?? null,
         });
       } catch {
         // Feedback is a nice-to-have signal, not a critical path -- revert

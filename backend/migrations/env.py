@@ -12,6 +12,8 @@ from app.models.chat_turn_event import ChatTurnEvent  # noqa: F401
 from app.models.conversation_session import ConversationSession  # noqa: F401
 from app.models.document import Document, DocumentChunk  # noqa: F401
 from app.models.feedback import Feedback  # noqa: F401
+from app.models.retrieval_tuning_audit import RetrievalTuningAudit  # noqa: F401
+from app.models.retrieval_tuning_config import RetrievalTuningConfig  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

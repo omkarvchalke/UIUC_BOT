@@ -126,6 +126,31 @@ async def test_generate_drops_a_weakly_scored_chunk_from_the_answer() -> None:
     assert result.citation_indices == [1]
 
 
+async def test_generate_uses_the_constructor_supplied_min_rerank_score() -> None:
+    # ExtractiveAnswerGenerator's floor is now a constructor argument (see
+    # app/api/dependencies.py::get_answer_generator, which looks up a
+    # tuned value from retrieval_tuning_config), not a fixed module
+    # constant -- confirm a custom threshold is actually applied, both
+    # dropping a chunk that would clear the default floor and keeping one
+    # that's above the custom floor.
+    chunk_below_custom_floor = _chunk(content="Some tangential fact.", title="A")
+    chunk_below_custom_floor["rerank_score"] = 2.0  # type: ignore[typeddict-item]
+    chunk_above_custom_floor = _chunk(content="The actual answer to the question.", title="B")
+    chunk_above_custom_floor["rerank_score"] = 4.0  # type: ignore[typeddict-item]
+
+    generator = ExtractiveAnswerGenerator(min_rerank_score=3.0)
+    result = await generator.generate(
+        "the question",
+        [chunk_below_custom_floor, chunk_above_custom_floor],
+        context="",
+        history=[],
+        student_type=None,
+    )
+
+    assert "tangential fact" not in result.text
+    assert "actual answer" in result.text
+
+
 async def test_generate_prefers_a_longer_tied_sentence_over_a_short_label_fragment() -> None:
     # Regression test for a real bug found live: "How can I file for CPT?"
     # against a real ISSS chunk picked "CPT application form ." -- a

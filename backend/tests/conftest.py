@@ -65,6 +65,11 @@ async def clean_tables(test_engine: AsyncEngine) -> AsyncGenerator[None]:
         # fail once anything references it.
         await conn.execute(text("TRUNCATE TABLE feedback, chat_turn_events, conversation_sessions"))
         await conn.execute(text("TRUNCATE TABLE documents CASCADE"))
+        # No FK to conversation_sessions, so these can be truncated on their
+        # own rather than joining the FK-linked group above.
+        await conn.execute(
+            text("TRUNCATE TABLE retrieval_tuning_config, retrieval_tuning_audit_log")
+        )
 
 
 @pytest_asyncio.fixture

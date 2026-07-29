@@ -15,6 +15,7 @@ from app.llm.groq_answer_generator import GroqAnswerGenerator
 from app.repositories.chat_turn_event_repository import ChatTurnEventRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.feedback_repository import FeedbackRepository
+from app.repositories.retrieval_tuning_repository import RetrievalTuningRepository
 from app.repositories.session_repository import SessionRepository
 from app.repositories.vector_repository import VectorRepository
 from app.retrieval.hybrid_search import HybridRetriever
@@ -111,12 +112,19 @@ def get_hybrid_retriever(
 HybridRetrieverDep = Annotated[HybridRetriever, Depends(get_hybrid_retriever)]
 
 
-def get_answer_generator() -> AnswerGenerator:
+async def get_answer_generator(db: DbSession) -> AnswerGenerator:
     # Falls back to the LLM-free placeholder when no Groq key is configured,
     # so local dev and tests work without a real credential -- only the
     # actual chat endpoint needs one.
     if get_settings().groq_api_key:
         return GroqAnswerGenerator()
+    # Looks up the tuned min_rerank_score (scripts/tune_retrieval_params.py)
+    # fresh on every request, same as get_settings() being called fresh per
+    # request elsewhere in this module -- a tuning-job commit takes effect
+    # on the very next request, no restart, no cache-bust.
+    tuned_value = await RetrievalTuningRepository(db).get("min_rerank_score")
+    if tuned_value is not None:
+        return ExtractiveAnswerGenerator(min_rerank_score=tuned_value)
     return ExtractiveAnswerGenerator()
 
 

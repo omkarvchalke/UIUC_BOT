@@ -1,9 +1,11 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.document import Topic
 from app.models.feedback import Feedback, FeedbackRating
 
 
@@ -22,6 +24,8 @@ class FeedbackRepository:
         answer: str,
         rating: FeedbackRating,
         comment: str | None,
+        topic: Topic | None = None,
+        citations: list[dict[str, Any]] | None = None,
     ) -> Feedback:
         feedback = Feedback(
             session_id=session_id,
@@ -30,6 +34,8 @@ class FeedbackRepository:
             answer=answer,
             rating=rating,
             comment=comment,
+            topic=topic,
+            citations=citations,
         )
         self._db.add(feedback)
         await self._db.commit()
@@ -42,3 +48,14 @@ class FeedbackRepository:
             query = query.where(Feedback.created_at >= since)
         result = await self._db.execute(query)
         return dict(result.tuples().all())
+
+    async def list_since(self, since: datetime | None) -> list[Feedback]:
+        # Used by scripts/tune_retrieval_params.py to pull only feedback
+        # newer than the last applied tuning change -- older rows already
+        # informed that decision. `since=None` means "no prior applied
+        # change exists yet", i.e. consider all-time feedback.
+        query = select(Feedback)
+        if since is not None:
+            query = query.where(Feedback.created_at >= since)
+        result = await self._db.execute(query)
+        return list(result.scalars().all())

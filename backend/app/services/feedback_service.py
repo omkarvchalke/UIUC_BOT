@@ -1,9 +1,11 @@
 import uuid
 
 from app.core.exceptions import SessionNotFoundError
+from app.models.document import Topic
 from app.models.feedback import Feedback, FeedbackRating
 from app.repositories.feedback_repository import FeedbackRepository
 from app.repositories.session_repository import SessionRepository
+from app.schemas.chat import ChatCitation
 
 
 class FeedbackService:
@@ -24,6 +26,8 @@ class FeedbackService:
         answer: str,
         rating: FeedbackRating,
         comment: str | None,
+        topic: Topic | None = None,
+        citations: list[ChatCitation] | None = None,
     ) -> Feedback:
         # Checked explicitly rather than letting a bad session_id surface
         # as a raw FK IntegrityError from the DB -- same pattern as
@@ -39,4 +43,6 @@ class FeedbackService:
             answer=answer.strip(),
             rating=rating,
             comment=comment.strip() if comment else None,
+            topic=topic,
+            citations=[c.model_dump(mode="json") for c in citations] if citations else None,
         )

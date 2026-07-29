@@ -40,7 +40,13 @@ _MAX_SOURCE_CHUNKS = 5
 # 5.2-8.3 for the other three) purely on "2026" overlap, and it became a
 # full bullet with its own citation. This floor drops chunks the reranker
 # itself flagged as weak before they can ever become a sentence pick.
-_MIN_RERANK_SCORE = 1.0
+#
+# This is the *default*, used only when no tuned value has been persisted
+# yet (app/models/retrieval_tuning_config.py) -- e.g. a brand-new DB before
+# scripts/tune_retrieval_params.py has run once. app/api/dependencies.py's
+# get_answer_generator looks up the persisted value first and falls back to
+# this constant, rather than ExtractiveAnswerGenerator reading it directly.
+_MIN_RERANK_SCORE_DEFAULT = 1.0
 
 
 def _tokenize(text: str) -> set[str]:
@@ -130,6 +136,9 @@ class ExtractiveAnswerGenerator:
     "how to choose your housing" navigational text, not an answer).
     """
 
+    def __init__(self, min_rerank_score: float = _MIN_RERANK_SCORE_DEFAULT) -> None:
+        self._min_rerank_score = min_rerank_score
+
     async def generate(
         self,
         query: str,
@@ -147,7 +156,7 @@ class ExtractiveAnswerGenerator:
         seen_sentences: set[str] = set()
         for chunk_index, chunk in enumerate(chunks[:_MAX_SOURCE_CHUNKS]):
             rerank_score = chunk.get("rerank_score")
-            if rerank_score is not None and rerank_score < _MIN_RERANK_SCORE:
+            if rerank_score is not None and rerank_score < self._min_rerank_score:
                 continue
             sentences = _split_sentences(chunk["content"])
             if not sentences:

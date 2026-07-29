@@ -38,6 +38,11 @@ export interface FeedbackRequest {
   answer: string;
   rating: FeedbackRating;
   comment?: string | null;
+  // Snapshotted from the ChatMessage already in hand at feedback time --
+  // there's nowhere server-side to look these up from (see Feedback.topic
+  // / .citations on the backend).
+  topic?: string | null;
+  citations?: Citation[] | null;
 }
 
 export interface ChatMessage {
