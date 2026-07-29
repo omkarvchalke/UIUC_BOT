@@ -100,6 +100,32 @@ async def test_generate_only_draws_from_the_top_max_source_chunks() -> None:
     assert 6 not in result.citation_indices
 
 
+async def test_generate_drops_a_weakly_scored_chunk_from_the_answer() -> None:
+    # Regression test for a real bug found live: "Academic Calendar 2026"
+    # pulled in an unrelated Commencement-livestream chunk purely on "2026"
+    # keyword overlap. Its rerank_score (0.48) was an order of magnitude
+    # below the genuinely on-topic chunks (5.2-8.3) but nothing filtered it
+    # out, so it became its own bullet with its own citation.
+    generator = ExtractiveAnswerGenerator()
+    relevant = _chunk(
+        content="Fall 2026 classes begin on August 24, 2026.", title="Fall 2026 Academic Calendar"
+    )
+    relevant["rerank_score"] = 5.2  # type: ignore[typeddict-item]
+    weak = _chunk(
+        content="Commencement livestream 2026 begins at 1:00 p.m. in Foellinger Great Hall.",
+        title="Unit Convocation Ceremonies",
+    )
+    weak["rerank_score"] = 0.48  # type: ignore[typeddict-item]
+
+    result = await generator.generate(
+        "Academic Calendar 2026", [relevant, weak], context="", history=[], student_type=None
+    )
+
+    assert "Commencement livestream" not in result.text
+    assert "Fall 2026 classes begin" in result.text
+    assert result.citation_indices == [1]
+
+
 async def test_generate_prefers_a_longer_tied_sentence_over_a_short_label_fragment() -> None:
     # Regression test for a real bug found live: "How can I file for CPT?"
     # against a real ISSS chunk picked "CPT application form ." -- a

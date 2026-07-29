@@ -32,6 +32,16 @@ _STOPWORDS = frozenset(
 # list-like answer, so don't raise it further without a reason.
 _MAX_SOURCE_CHUNKS = 5
 
+# ms-marco-MiniLM-L-6-v2 (reranker.py) scores are raw cross-encoder logits,
+# not a 0-1 confidence -- genuinely on-topic chunks in this corpus score
+# roughly 5-8+, while a merely keyword-adjacent chunk that isn't actually
+# about the query scores near 0. Confirmed live: "Academic Calendar 2026"
+# pulled in an unrelated Commencement-livestream chunk that scored 0.48 (vs
+# 5.2-8.3 for the other three) purely on "2026" overlap, and it became a
+# full bullet with its own citation. This floor drops chunks the reranker
+# itself flagged as weak before they can ever become a sentence pick.
+_MIN_RERANK_SCORE = 1.0
+
 
 def _tokenize(text: str) -> set[str]:
     return {t for t in _TOKEN_PATTERN.findall(text.lower()) if t not in _STOPWORDS}
@@ -136,6 +146,9 @@ class ExtractiveAnswerGenerator:
         picks: list[tuple[int, str]] = []  # (0-based index into `chunks`, best sentence)
         seen_sentences: set[str] = set()
         for chunk_index, chunk in enumerate(chunks[:_MAX_SOURCE_CHUNKS]):
+            rerank_score = chunk.get("rerank_score")
+            if rerank_score is not None and rerank_score < _MIN_RERANK_SCORE:
+                continue
             sentences = _split_sentences(chunk["content"])
             if not sentences:
                 continue
