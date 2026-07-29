@@ -19,7 +19,18 @@ function loadHistory(sessionId: string): ChatMessage[] {
 }
 
 function saveHistory(sessionId: string, messages: ChatMessage[]): void {
-  localStorage.setItem(historyKey(sessionId), JSON.stringify(messages));
+  // Confirmed live: localStorage.setItem throws QuotaExceededError once the
+  // origin's storage fills up (e.g. many stale illiniguide.history.<id> keys
+  // from past sessions never getting cleaned up). It was uncaught here,
+  // which propagated out of the setMessages updater and crashed the entire
+  // page on the very next message. History is a reload convenience, not
+  // required for the chat to function -- same non-critical treatment as
+  // submitFeedback's failure handling below.
+  try {
+    localStorage.setItem(historyKey(sessionId), JSON.stringify(messages));
+  } catch {
+    // Swallow: chat keeps working from in-memory state either way.
+  }
 }
 
 function createId(): string {

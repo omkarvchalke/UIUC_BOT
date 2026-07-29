@@ -67,6 +67,38 @@ describe("useChat", () => {
     expect(stored).toHaveLength(2);
   });
 
+  it("keeps working from in-memory state when localStorage.setItem throws QuotaExceededError", async () => {
+    // Regression test for a real crash found live: once a browser's
+    // localStorage for this origin fills up (e.g. many stale
+    // illiniguide.history.<id> keys left behind by past sessions), setItem
+    // throws QuotaExceededError. Uncaught, that propagated out of a
+    // setMessages updater and crashed the entire page on the very next
+    // message -- not the answer content, the storage write.
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+    });
+    vi.spyOn(chatApi, "sendChatMessage").mockResolvedValue({
+      answer: "Here's the answer.",
+      grounded: true,
+      needs_clarification: false,
+      citations: [],
+      topic: null,
+      classification_confidence: null,
+    });
+
+    const { result } = renderHook(() => useChat("session-quota"));
+
+    await act(async () => {
+      await result.current.sendMessage("How do I apply for OPT?");
+    });
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages[1]).toMatchObject({
+      role: "assistant",
+      content: "Here's the answer.",
+    });
+  });
+
   it("ignores blank/whitespace-only messages", async () => {
     const sendSpy = vi.spyOn(chatApi, "sendChatMessage");
     const { result } = renderHook(() => useChat("session-3"));
