@@ -47,4 +47,18 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Advising (The Grainger College of Engineering)",
     ),
+    # Doesn't contradict the "no single university-wide advising office"
+    # finding above -- this isn't an advising office, it's a campus-wide
+    # "Student Success @ Illinois" navigation hub that explains *why*
+    # advising is decentralized and links out to every college's own
+    # advising site, plus genuinely general info (the Intercollegiate
+    # Transfer process for changing majors, minors). Verified live (HTTP
+    # 200, real substantive content) before adding.
+    SourceConfig(
+        url="https://studentsuccess.illinois.edu/student-resources/advising/",
+        department="Student Success @ Illinois",
+        topic=Topic.ACADEMIC_ADVISING,
+        source_type=SourceType.HTML,
+        fallback_title="Advising (Student Success @ Illinois)",
+    ),
 )

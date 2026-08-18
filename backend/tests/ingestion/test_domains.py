@@ -41,6 +41,9 @@ def test_sources_reexport_matches_domains_aggregate() -> None:
 def test_expected_entry_counts() -> None:
     # Pins the counts verified against the pre-reorganization snapshot --
     # a silent drop or duplicate during a future domain-file edit changes
-    # one of these numbers.
+    # one of these numbers. 71 -> 76: 5 sources deliberately added after a
+    # web-research pass to address a real topic-imbalance finding (Topic.
+    # VISA/ACADEMIC_ADVISING had very few real documents) -- see
+    # international_services.py and academics_curriculum.py.
     assert len(domains.ALL_SEEDS) == 35
-    assert len(domains.ALL_SOURCES) == 71
+    assert len(domains.ALL_SOURCES) == 76

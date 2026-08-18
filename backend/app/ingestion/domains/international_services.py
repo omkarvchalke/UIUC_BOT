@@ -46,6 +46,45 @@ SOURCES: tuple[SourceConfig, ...] = (
         fallback_title="Sample Form I-20",
         student_types=(StudentType.INTERNATIONAL,),
     ),
+    # The four sources below were added after a corpus audit found Topic.
+    # VISA had only 2 real documents (23 chunks, vs. 300+ for several other
+    # topics) -- the broad isss.illinois.edu crawl above just doesn't
+    # auto-classify many pages as primarily "visa status" specifically
+    # (most ISSS content is about OPT/CPT or general services instead).
+    # Verified live (HTTP 200, substantive real content, not JS-shell/thin)
+    # before adding, same as every other manual SOURCES entry here.
+    SourceConfig(
+        url="https://isss.illinois.edu/students/f1j1-nonimmstatus/",
+        department="International Student and Scholar Services",
+        topic=Topic.VISA,
+        source_type=SourceType.HTML,
+        fallback_title="Maintaining F-1/J-1 Status",
+        student_types=(StudentType.INTERNATIONAL,),
+    ),
+    SourceConfig(
+        url="https://isss.illinois.edu/students/f1j1-travel/",
+        department="International Student and Scholar Services",
+        topic=Topic.VISA,
+        source_type=SourceType.HTML,
+        fallback_title="F-1/J-1 Travel",
+        student_types=(StudentType.INTERNATIONAL,),
+    ),
+    SourceConfig(
+        url="https://isss.illinois.edu/students/incoming/pre_arrival/immigration.html",
+        department="International Student and Scholar Services",
+        topic=Topic.VISA,
+        source_type=SourceType.HTML,
+        fallback_title="Pre-Arrival Information",
+        student_types=(StudentType.INTERNATIONAL,),
+    ),
+    SourceConfig(
+        url="https://isss.illinois.edu/students/returning-students/",
+        department="International Student and Scholar Services",
+        topic=Topic.VISA,
+        source_type=SourceType.HTML,
+        fallback_title="Returning Students",
+        student_types=(StudentType.INTERNATIONAL,),
+    ),
     SourceConfig(
         url="https://isss.illinois.edu/students/incoming/orientation/ug_orientation.html",
         department="International Student and Scholar Services",
