@@ -163,6 +163,18 @@ def make_check_student_profile_node(deps: GraphDependencies) -> Node:
         return {
             "needs_clarification": missing_profile,
             "clarification_reason": "missing_profile" if missing_profile else None,
+            # Explicitly cleared (not omitted) every turn that doesn't set
+            # a fresh one above -- GraphState has no reducer for this key,
+            # so LangGraph's default merge leaves a previous turn's value
+            # sitting in checkpointed state untouched if a later node's
+            # return dict simply doesn't mention it. Confirmed live: a real
+            # regression where turn 2's override ("how can I check my VISA
+            # status?") silently kept overriding every *later* turn's real
+            # question too, including a completely unrelated "I want to
+            # enroll into classes" -- both got classified using turn 2's
+            # stale override (identical classification_confidence proved
+            # it), not their own actual text.
+            "query_override": None,
         }
 
     return check_student_profile
@@ -280,9 +292,7 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
         # real OPT page #1-2. A well-separated topic (e.g. ISSS/CPT) still
         # gets the precision win of a narrowed candidate set; a
         # misclassified one degrades to today's unfiltered behavior instead
-        # of a dead end. student_type stays an unconditional hard filter
-        # because it comes from the verified session profile, not a
-        # classifier guess.
+        # of a dead end.
         #
         # topic_filter_min_results (Settings, default 3): below this many
         # topic-filtered results, treat the classifier's topic guess as more
@@ -300,6 +310,32 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
                 results = fallback_results
                 topic_filter_applied = False
 
+        # student_type fallback, same relaxation pattern as topic above:
+        # a student's real situation doesn't always fit the single bucket
+        # the profile gate collects (freshman/transfer/graduate/
+        # international are treated as mutually exclusive, but a real
+        # person can be e.g. an international *graduate* student).
+        # Confirmed live: a session with student_type=graduate asking
+        # "How do I maintain my F-1 visa status?" got hard-filtered down to
+        # zero results, since every visa/OPT/CPT source is scoped to
+        # student_types=(INTERNATIONAL,) only -- content that's exactly
+        # right for this person, just filtered out by the other half of
+        # their profile. Below topic_filter_min_results even after the
+        # topic relaxation above, retry with no student_type filter at all
+        # rather than surface a false "nothing found" -- still passing
+        # through whatever topic filter state the step above settled on,
+        # so this only relaxes student_type, not both at once.
+        student_type_filter_applied = student_type is not None
+        if student_type is not None and len(results) < settings.topic_filter_min_results:
+            unfiltered_results = await deps.hybrid_retriever.search(
+                query,
+                limit=settings.retrieval_candidate_limit,
+                topic=topic if topic_filter_applied else None,
+            )
+            if len(unfiltered_results) > len(results):
+                results = unfiltered_results
+                student_type_filter_applied = False
+
         logger.info(
             "graph_retrieve",
             session_id=state["session_id"],
@@ -311,6 +347,7 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
             # crashes on the plain-str case.
             topic=str(topic) if topic else None,
             topic_filter_applied=topic_filter_applied,
+            student_type_filter_applied=student_type_filter_applied,
             result_count=len(results),
         )
         return {"retrieved_chunks": [_to_chunk_state(chunk) for chunk in results]}

@@ -51,6 +51,7 @@ async def _seed_and_index(
     title: str,
     chunk_texts: list[str],
     topic: Topic,
+    student_types: tuple[StudentType, ...] = (),
 ) -> None:
     repository = DocumentRepository(session)
     document = await repository.upsert_document(
@@ -59,7 +60,7 @@ async def _seed_and_index(
         department="Test Department",
         topic=topic,
         source_type=SourceType.HTML,
-        student_types=(),
+        student_types=student_types,
         last_updated=None,
         content_hash=f"hash-{url}",
     )
@@ -270,6 +271,42 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
     assert all(citation["topic"] == Topic.CPT.value for citation in result["citations"])
 
 
+async def test_retrieval_falls_back_when_student_type_filter_excludes_everything(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_checkpointer: AsyncPostgresSaver,
+) -> None:
+    """Regression test for a real bug found live: student_type/topic aren't
+    independent facts about a person -- a real international *graduate*
+    student answering "graduate" to the profile-clarifying question had
+    every international-scoped source (visa/OPT/CPT) hard-filtered out,
+    even though it was exactly the content their question needed. Same
+    relaxation pattern as the topic fallback above: below
+    Settings.topic_filter_min_results even after the topic-level fallback,
+    retry with no student_type filter rather than surface a false "nothing
+    found."
+    """
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/visa-status",
+            title="Maintaining F-1 Visa Status",
+            chunk_texts=["Maintain your F-1 visa status by staying enrolled full-time."],
+            topic=Topic.VISA,
+            student_types=(StudentType.INTERNATIONAL,),
+        )
+        session_id = await _create_session(session, student_type=StudentType.GRADUATE)
+        graph = _build_test_graph(session, test_checkpointer)
+
+        result = await graph.ainvoke(
+            turn_input(session_id, "How do I maintain my F-1 visa status?"),
+            config=config_for(session_id),
+        )
+
+    assert result["grounded"] is True
+    citation_urls = {citation["url"] for citation in result["citations"]}
+    assert "https://example.illinois.edu/visa-status" in citation_urls
+
+
 async def test_checkpointer_persists_messages_across_turns(
     db_session_factory: async_sessionmaker[AsyncSession],
     test_checkpointer: AsyncPostgresSaver,
@@ -403,3 +440,55 @@ async def test_bare_student_type_reply_answers_the_original_question(
     assert persisted is not None and persisted.student_type == StudentType.GRADUATE
     assert second["grounded"] is True
     assert "Meal plan" in second["answer"] or "meal plan" in second["answer"]
+
+
+async def test_query_override_does_not_leak_into_a_later_unrelated_turn(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_checkpointer: AsyncPostgresSaver,
+) -> None:
+    # Regression test for a real bug found live in the fix above:
+    # query_override, once set by a bare student-type reply, was never
+    # cleared on a later turn that doesn't set a fresh one -- GraphState
+    # has no reducer for that key, so LangGraph's default merge left the
+    # previous turn's override sitting in checkpointed state. A THIRD turn
+    # asking a completely unrelated question got silently answered using
+    # the *second* turn's stale override instead of its own actual text
+    # (confirmed live: identical classification_confidence between an
+    # unrelated question and the stale override proved it wasn't using its
+    # own text at all).
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/dining",
+            title="Meal Plans",
+            chunk_texts=[
+                "Meal plans include Classic Meals and Dining Dollars, with options for "
+                "students living in residence halls across campus dining locations."
+            ],
+            topic=Topic.DINING,
+        )
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/registration",
+            title="Class Registration",
+            chunk_texts=[
+                "Select Register for Classes from the Class Registration Main Menu and "
+                "choose the term you would like to register for."
+            ],
+            topic=Topic.COURSE_REGISTRATION,
+        )
+        session_id = await _create_session(session, student_type=None)
+        graph = _build_test_graph(session, test_checkpointer)
+        config = config_for(session_id)
+
+        await graph.ainvoke(
+            turn_input(session_id, "What meal plans are available?"), config=config
+        )
+        await graph.ainvoke(turn_input(session_id, "Graduate"), config=config)
+        third = await graph.ainvoke(
+            turn_input(session_id, "How do I register for classes?"), config=config
+        )
+
+    assert third["topic"] == Topic.COURSE_REGISTRATION
+    assert third["grounded"] is True
+    assert "Register for Classes" in third["answer"]
