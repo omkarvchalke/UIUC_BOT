@@ -174,6 +174,55 @@ def test_visually_hidden_focusable_skip_link_is_stripped() -> None:
     assert all("DTD HTML" not in section.text for section in result.sections)
 
 
+def test_skip_link_with_an_unrelated_css_class_is_still_stripped() -> None:
+    # Regression test for a real bug found live via a corpus audit: a
+    # different UIUC site (a KnowledgeBase platform, not Drupal) uses its
+    # own class="kbs-skip-link" for the identical "Skip to the main
+    # content" accessibility link -- neither the visually-hidden nor the
+    # skip-link CSS-class filters catch it, since it's a CMS-specific class
+    # name with no shared naming convention. Matched by anchor text +
+    # #-href instead, so it doesn't matter what class name a given site
+    # happens to use.
+    html = """
+    <html><body>
+        <a class="kbs-skip-link" href="#maincontent">Skip to the main content</a>
+        <main>
+            <h1>Answers</h1>
+            <p>Contact the IT Service Desk for password resets.</p>
+        </main>
+    </body></html>
+    """
+    result = parse_html(html, base_url=_BASE_URL)
+    assert "Contact the IT Service Desk" in result.text
+    assert "Skip to the main content" not in result.text
+
+
+def test_library_hours_js_widget_placeholder_is_stripped() -> None:
+    # Regression test for a real bug found live: library.illinois.edu pages
+    # embed a JS-populated "today's hours" widget (class*="UofI_Library_
+    # Hours") site-wide. A static fetch never runs the JS that fills it in,
+    # so the scraped text was always the literal placeholder text --
+    # "Loading Library Hours..." -- which a real chat answer then cited as
+    # if it were actual content.
+    html = """
+    <html><body>
+        <main>
+            <h1>Research Services</h1>
+            <div class="row UofI_Library_Hours_mobile">
+                <div class="UofI_Library_Hours "><div class="UofI_Library_Hours_Inner">
+                Loading Library Hours...
+                </div></div>
+            </div>
+            <p>Help with MLA, APA, and other citation styles.</p>
+        </main>
+    </body></html>
+    """
+    result = parse_html(html, base_url=_BASE_URL)
+    assert "Help with MLA, APA" in result.text
+    assert "Loading Library Hours" not in result.text
+    assert all("Loading Library Hours" not in section.text for section in result.sections)
+
+
 def test_extracts_last_updated_from_meta_tag() -> None:
     result = parse_html(_SAMPLE_HTML, base_url=_BASE_URL)
     assert result.last_updated == datetime(2026, 3, 15, 10, 0, tzinfo=UTC)
@@ -304,3 +353,45 @@ def test_flat_text_field_is_unaffected_by_sections() -> None:
     result = parse_html(_SAMPLE_HTML, base_url=_BASE_URL)
     assert "required to live in university housing" in result.text
     assert result.sections is not None and len(result.sections) > 0
+
+
+def test_inline_link_mid_sentence_does_not_shred_the_sentence() -> None:
+    # Regression test for a real bug found live via a 326-question sweep:
+    # a sentence containing an inline <a> link (extremely common -- "your
+    # Academic College", "Student Self-Service") used to split into three
+    # separate one-line "sentences" at each tag boundary ("...with your",
+    # "Academic College", "."), and the extractive generator would then
+    # sometimes pick the bare link text alone as if it were a complete
+    # answer (e.g. "academic leave of absence" for "what's the process for
+    # requesting a leave of absence?").
+    html = (
+        "<html><body><h1>Leaving the University</h1>"
+        "<p>It is recommended you communicate your stop out plans with your "
+        '<a href="/college">Academic College</a>.</p>'
+        "</body></html>"
+    )
+    result = parse_html(html, base_url=_BASE_URL)
+    assert len(result.sections) == 1
+    assert result.sections[0].text == (
+        "It is recommended you communicate your stop out plans with your Academic College."
+    )
+
+
+def test_inline_strong_mid_sentence_does_not_shred_the_sentence() -> None:
+    html = "<html><body><h1>T</h1><p>Please <strong>submit</strong> the form by May 1.</p></body></html>"
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections[0].text == "Please submit the form by May 1."
+
+
+def test_sibling_paragraphs_around_an_inline_link_stay_on_separate_lines() -> None:
+    # The inline-tag grouping fix must not over-correct into gluing
+    # genuinely separate block-level content together: two sibling <p>s,
+    # one of which happens to contain a link, must still produce two lines.
+    html = (
+        "<html><body><h1>T</h1>"
+        '<p>Contact your <a href="/college">Academic College</a>.</p>'
+        "<p>A separate paragraph.</p>"
+        "</body></html>"
+    )
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections[0].text == "Contact your Academic College.\nA separate paragraph."

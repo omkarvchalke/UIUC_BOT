@@ -33,8 +33,62 @@ _NOISE_TAGS = (
     "ilw-footer",
 )
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
+# Tags that sit *inside* a sentence rather than marking a real content
+# boundary -- text under one of these must stay on the same line as its
+# surrounding prose, not start a new one. Confirmed live via a 326-question
+# sweep: a sentence like "...communicate your stop out plans with your
+# Academic College." routinely has "Academic College" as its own <a> link,
+# which the old per-text-node line-splitting below turned into three
+# separate one-line "sentences" ("...with your", "Academic College", "."),
+# each short enough to look like a real, complete answer on its own to the
+# extractive generator -- producing answers that were just a bare link
+# label ("academic leave of absence") or a truncated fragment ("Download
+# software from the") instead of the real sentence they were cut from.
+_INLINE_TAGS = frozenset(
+    {
+        "a",
+        "span",
+        "strong",
+        "em",
+        "b",
+        "i",
+        "u",
+        "sup",
+        "sub",
+        "small",
+        "mark",
+        "abbr",
+        "cite",
+        "q",
+        "time",
+        "code",
+        "kbd",
+        "var",
+        "samp",
+        "label",
+        "s",
+        "strike",
+        "wbr",
+        "ins",
+        "del",
+        "font",
+        "big",
+        "tt",
+        "bdi",
+        "bdo",
+    }
+)
 _LAST_UPDATED_META_NAMES = ("last-modified", "revised", "date", "dcterms.modified")
 _LAST_UPDATED_META_PROPERTIES = ("article:modified_time", "article:published_time")
+_SKIP_LINK_PHRASES = frozenset(
+    {
+        "skip to main content",
+        "skip to the main content",
+        "skip to content",
+        "skip navigation",
+        "skip to navigation",
+    }
+)
 
 
 def parse_html(html: str, *, base_url: str, fallback_title: str = "Untitled") -> ExtractedDocument:
@@ -76,6 +130,29 @@ def parse_html(html: str, *, base_url: str, fallback_title: str = "Untitled") ->
     for hidden in soup.select('[class*="visually-hidden"], [class*="sr-only"]'):
         hidden.decompose()
 
+    # class*="UofI_Library_Hours": a JS-populated "today's hours" widget
+    # embedded site-wide across library.illinois.edu pages (a static fetch
+    # never runs the JS that fills it in, so the scraped text is always the
+    # literal placeholder, "Loading Library Hours..."). Confirmed live: a
+    # real chat answer to "Library hours" cited this placeholder text
+    # itself as if it were an answer -- worse than the already-documented
+    # "hours aren't captured" gap, since it looks like real, confident
+    # content instead of an honest decline.
+    for widget in soup.select('[class*="UofI_Library_Hours"]'):
+        widget.decompose()
+
+    # Skip-navigation links, matched semantically (an internal #anchor jump
+    # whose text is one of the handful of standard skip-link phrasings)
+    # rather than by CSS class: confirmed live that chasing class names
+    # site-by-site doesn't scale -- "Skip to the main content" survived the
+    # visually-hidden-focusable fix above because a *different* UIUC site
+    # (a KnowledgeBase platform, not Drupal) uses its own unrelated
+    # class="kbs-skip-link" for the identical accessibility pattern.
+    for link in soup.select('a[href^="#"]'):
+        text = link.get_text(strip=True).lower()
+        if text in _SKIP_LINK_PHRASES:
+            link.decompose()
+
     # bs4's Comment/Doctype/CData/ProcessingInstruction/Declaration are all
     # NavigableString subclasses (via the common PreformattedString base),
     # so their raw markup -- angle brackets and all -- is included verbatim
@@ -105,6 +182,20 @@ def parse_html(html: str, *, base_url: str, fallback_title: str = "Untitled") ->
     )
 
 
+def _nearest_line_ancestor(node: NavigableString) -> Tag | None:
+    """Walks up past inline tags (a, span, strong, ...) to find the tag that
+    actually marks a real line boundary for this text node. Two text nodes
+    that resolve to the *same* ancestor here belong on the same line/
+    sentence, even if one of them sits inside an inline tag -- e.g. both
+    "...with your " and "Academic College" in "...with your <a>Academic
+    College</a>." resolve to the same enclosing <p>, so they're joined into
+    one line instead of the link text becoming its own line."""
+    parent = node.parent
+    while isinstance(parent, Tag) and parent.name in _INLINE_TAGS:
+        parent = parent.parent
+    return parent if isinstance(parent, Tag) else None
+
+
 def _extract_sections(soup: BeautifulSoup) -> tuple[Section, ...]:
     """DOM-order walk that segments body content at heading boundaries.
 
@@ -116,12 +207,30 @@ def _extract_sections(soup: BeautifulSoup) -> tuple[Section, ...]:
     captured as that heading's own title (via find_parent, not `.parent`,
     since a heading can contain inline markup like `<h2><span>A</span>
     B</h2>`).
+
+    Text nodes are grouped into lines by their nearest *non-inline*
+    ancestor (see _nearest_line_ancestor), not one line per text node --
+    otherwise a sentence containing an inline tag (a link, a <strong>) gets
+    shredded into several one-line fragments at every tag boundary, and a
+    plain nav link's anchor text ("Academic College") ends up looking like
+    its own short, complete "sentence" instead of the two or three words it
+    actually is in the middle of a real one.
     """
     sections: list[Section] = []
     heading_stack: list[tuple[int, str]] = []
     current_lines: list[str] = []
+    current_line_parts: list[str] = []
+    current_line_ancestor: Tag | None = None
+
+    def flush_line() -> None:
+        nonlocal current_line_ancestor
+        if current_line_parts:
+            current_lines.append(" ".join(current_line_parts))
+            current_line_parts.clear()
+        current_line_ancestor = None
 
     def flush() -> None:
+        flush_line()
         text = clean_text("\n".join(current_lines))
         if text:
             sections.append(Section(heading_path=tuple(h for _, h in heading_stack), text=text))
@@ -148,8 +257,13 @@ def _extract_sections(soup: BeautifulSoup) -> tuple[Section, ...]:
             if node.find_parent(_HEADING_TAGS) is not None:
                 continue
             text = str(node).strip()
-            if text:
-                current_lines.append(text)
+            if not text:
+                continue
+            ancestor = _nearest_line_ancestor(node)
+            if current_line_parts and ancestor is not current_line_ancestor:
+                flush_line()
+            current_line_ancestor = ancestor
+            current_line_parts.append(text)
 
     flush()
     return tuple(sections)

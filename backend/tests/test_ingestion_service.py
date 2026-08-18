@@ -405,6 +405,30 @@ async def test_ingest_source_returns_failed_status_on_fetch_error(
         assert document is None
 
 
+async def test_ingest_source_rejects_a_client_rendered_spa_shell_page(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    # Regression test for a real corpus audit finding: several UIUC pages
+    # (paymybill.uillinois.edu, studentmoney.uillinois.edu, treasury.
+    # uillinois.edu) are 100% client-rendered single-page apps -- a static
+    # fetch only ever sees the page's own <title>, e.g. "Refunds - PAY MY
+    # BILL Home" and nothing else, since the real content is filled in by
+    # JS after load. These were getting ingested as real, citable documents
+    # with a single near-empty chunk that could never answer anything.
+    html = "<html><head><title>Refunds - PAY MY BILL Home</title></head><body></body></html>"
+
+    async with db_session_factory() as session:
+        repository = DocumentRepository(session)
+        service = IngestionService(repository)
+
+        async with _mock_client(html.encode()) as client:
+            result = await service.ingest_source(_source(), http_client=client)
+
+        assert result.status == "failed"
+        document = await repository.get_by_url(_source().url)
+        assert document is None
+
+
 async def test_ingest_all_processes_every_source(
     db_session_factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:

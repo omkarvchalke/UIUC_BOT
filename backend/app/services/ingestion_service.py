@@ -25,6 +25,18 @@ logger = get_logger(__name__)
 
 IngestStatus = Literal["created", "updated", "skipped", "failed"]
 
+# Below this, extracted.text is essentially always a client-rendered
+# single-page-app shell that a static fetch can never see past (no HTML
+# text node ever gets the real content -- it's filled in by JS after
+# load), not real content that's merely short. Calibrated from a live
+# corpus audit: confirmed-empty SPA-shell pages topped out at 34 chars
+# (e.g. "Refunds - PAY MY BILL Home", "Student Banking Program -
+# TREASURY" -- literally just the page's own <title>, nothing else ever
+# renders server-side), while the shortest confirmed-*real* page found in
+# the same audit was 98 chars (a one-sentence Courtyard Karaoke event
+# listing). 40 sits with real margin on both sides of that gap.
+_MIN_EXTRACTED_TEXT_CHARS = 40
+
 
 @dataclass(frozen=True)
 class IngestResult:
@@ -104,8 +116,10 @@ class IngestionService:
             logger.warning("ingestion_parse_failed", url=source.url, error=str(exc))
             return IngestResult(url=source.url, status="failed", error=str(exc))
 
-        if not extracted.text:
-            logger.warning("ingestion_empty_text", url=source.url)
+        if len(extracted.text) < _MIN_EXTRACTED_TEXT_CHARS:
+            logger.warning(
+                "ingestion_empty_text", url=source.url, extracted_chars=len(extracted.text)
+            )
             return IngestResult(url=source.url, status="failed", error="no extractable text")
 
         content_hash = hashlib.sha256(extracted.text.encode("utf-8")).hexdigest()
