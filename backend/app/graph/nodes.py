@@ -10,6 +10,7 @@ from app.core.logging import get_logger
 from app.graph.dependencies import GraphDependencies
 from app.graph.generation import greeting_answer
 from app.graph.state import CitationState, GraphState, RetrievedChunkState
+from app.models.conversation_session import StudentType
 from app.retrieval.hybrid_search import RetrievedChunk
 
 logger = get_logger(__name__)
@@ -20,6 +21,31 @@ _GREETING_PHRASES = frozenset(
     {"hi", "hello", "hey", "yo", "hiya", "good morning", "good afternoon", "good evening", "howdy"}
 )
 
+# Free-text replies to the "are you a freshman, transfer, graduate, or
+# international student?" clarifying question -- deliberately narrow
+# (substring match on the reply alone, not the full message) since this
+# only ever runs against a short, direct answer to that specific question,
+# not an arbitrary message. Order matters: checked first-match-wins, so
+# "international" is checked before "transfer" would matter if it ever
+# overlapped (it doesn't today, but keep in mind when adding phrasings).
+_STUDENT_TYPE_PHRASES: tuple[tuple[StudentType, tuple[str, ...]], ...] = (
+    (StudentType.FRESHMAN, ("freshman", "first-year", "first year", "incoming")),
+    (StudentType.TRANSFER, ("transfer",)),
+    (
+        StudentType.GRADUATE,
+        ("graduate", "grad student", "grad school", "masters", "master's", "phd", "doctoral"),
+    ),
+    (StudentType.INTERNATIONAL, ("international",)),
+)
+
+
+def _parse_student_type_reply(text: str) -> StudentType | None:
+    lowered = text.strip().lower()
+    for student_type, phrases in _STUDENT_TYPE_PHRASES:
+        if any(phrase in lowered for phrase in phrases):
+            return student_type
+    return None
+
 
 def _latest_human_message(state: GraphState) -> str:
     for message in reversed(state["messages"]):
@@ -27,6 +53,32 @@ def _latest_human_message(state: GraphState) -> str:
             content = message.content
             return content if isinstance(content, str) else str(content)
     return ""
+
+
+def _human_message_before_last(state: GraphState) -> str:
+    """The human message immediately before the current turn's -- used to
+    recover the real question a user asked when their *next* message turns
+    out to be a bare reply to our own profile-clarifying question (e.g.
+    "Graduate") rather than a new question. Returns "" if there isn't one
+    (shouldn't happen when called: this is only used from a state where
+    profile_asked is True, which is only ever set right after a first-turn
+    clarifying question, guaranteeing an earlier human message exists)."""
+    human_messages = [m for m in state["messages"] if isinstance(m, HumanMessage)]
+    if len(human_messages) < 2:
+        return ""
+    content = human_messages[-2].content
+    return content if isinstance(content, str) else str(content)
+
+
+def _effective_query(state: GraphState) -> str:
+    """The real question to classify/retrieve/answer against -- normally
+    just the latest human message, but overridden by check_student_profile
+    when that message was actually a reply to our own clarifying question
+    (see query_override's docstring in state.py)."""
+    override = state.get("query_override")
+    if override:
+        return override
+    return _latest_human_message(state)
 
 
 def _to_chunk_state(
@@ -66,13 +118,43 @@ def make_load_session_node(deps: GraphDependencies) -> Node:
     return load_session
 
 
-def make_check_student_profile_node() -> Node:
+def make_check_student_profile_node(deps: GraphDependencies) -> Node:
     async def check_student_profile(state: GraphState) -> dict[str, Any]:
         # Persisted checkpointer state means len(messages) > 1 on any turn
         # after the first for this session -- only offer to ask about
         # student type once, on a session's very first message, rather than
         # interrupting every turn where it happens to still be unset.
         is_first_turn = len(state["messages"]) <= 1
+
+        # This turn's message is a reply to *our own* profile-clarifying
+        # question from a previous turn, not a fresh question -- confirmed
+        # live: a user who just types "Graduate" in reply had that single
+        # word become the *entire* query for topic classification and
+        # retrieval, producing an irrelevant answer, while student_type
+        # itself was never actually parsed or persisted at all (a "Phase 6
+        # will parse the free-text answer and persist it" TODO that was
+        # never built). Only attempted once (profile_asked True, student_type
+        # still None, not the first turn) -- a later turn that happens to
+        # mention "graduate" as part of a real question must not be
+        # reinterpreted as a profile answer.
+        if (
+            state.get("student_type") is None
+            and state.get("profile_asked", False)
+            and not is_first_turn
+        ):
+            reply = _latest_human_message(state)
+            parsed = _parse_student_type_reply(reply)
+            if parsed is not None:
+                await deps.session_service.update_student_type(
+                    uuid.UUID(state["session_id"]), parsed
+                )
+                return {
+                    "student_type": parsed,
+                    "needs_clarification": False,
+                    "clarification_reason": None,
+                    "query_override": _human_message_before_last(state),
+                }
+
         missing_profile = (
             state.get("student_type") is None
             and not state.get("profile_asked", False)
@@ -104,7 +186,7 @@ def make_intent_detection_node() -> Node:
 
 def make_question_classification_node(deps: GraphDependencies) -> Node:
     async def question_classification(state: GraphState) -> dict[str, Any]:
-        message = _latest_human_message(state)
+        message = _effective_query(state)
         result = deps.topic_classifier.classify(message)
 
         needs_clarification = result.topic is None
@@ -174,7 +256,7 @@ def make_metadata_filter_node() -> Node:
 def make_retrieve_node(deps: GraphDependencies) -> Node:
     async def retrieve(state: GraphState) -> dict[str, Any]:
         settings = get_settings()
-        query = _latest_human_message(state)
+        query = _effective_query(state)
         topic = state.get("topic")
         student_type = state.get("student_type")
 
@@ -238,7 +320,7 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
 
 def make_reranker_node(deps: GraphDependencies) -> Node:
     async def rerank(state: GraphState) -> dict[str, Any]:
-        query = _latest_human_message(state)
+        query = _effective_query(state)
         candidates = [(c["content"], c) for c in state.get("retrieved_chunks", [])]
         # rerank_top_k (Settings, default 8; raised from 5): answers were
         # coming back thin partly because the model only had 5 chunks of
@@ -270,7 +352,7 @@ def make_generate_response_node(deps: GraphDependencies) -> Node:
         if state.get("intent") == "greeting":
             result = greeting_answer()
         else:
-            query = _latest_human_message(state)
+            query = _effective_query(state)
             # messages[:-1]: exclude the current turn's just-appended human
             # message from "history" -- it's already passed as `query`.
             result = await deps.answer_generator.generate(

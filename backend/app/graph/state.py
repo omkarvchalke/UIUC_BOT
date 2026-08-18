@@ -59,6 +59,14 @@ class GraphState(TypedDict):
     college: NotRequired[str | None]
     department: NotRequired[str | None]
     profile_asked: NotRequired[bool]
+    # Set by check_student_profile when this turn's message is a reply to
+    # our own "what kind of student are you?" clarifying question (e.g.
+    # "Graduate") rather than a fresh question -- the actual question the
+    # user asked is the human message *before* that clarifying question,
+    # not this reply. When set, question_classification/retrieve/
+    # generate_response use this instead of the literal latest human
+    # message. See _effective_query in nodes.py.
+    query_override: NotRequired[str | None]
 
     # Routing signals set by intent_detection / question_classification.
     intent: NotRequired[Intent]

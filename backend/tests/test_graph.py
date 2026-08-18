@@ -333,7 +333,10 @@ async def test_clarification_asked_once_then_question_proceeds(
             session,
             url="https://example.illinois.edu/dining",
             title="Meal Plans",
-            chunk_texts=["Meal plans include Classic Meals and Dining Dollars."],
+            chunk_texts=[
+                "Meal plans include Classic Meals and Dining Dollars, with options for "
+                "students living in residence halls across campus dining locations."
+            ],
             topic=Topic.DINING,
         )
         session_id = await _create_session(session, student_type=None)
@@ -343,10 +346,12 @@ async def test_clarification_asked_once_then_question_proceeds(
         first = await graph.ainvoke(
             turn_input(session_id, "What meal plans are available?"), config=config
         )
-        # Second turn: student_type is still unset in Postgres (Phase 6 will
-        # parse the free-text answer and persist it), but profile_asked is
-        # now True in checkpointed state, so the graph must not ask again --
-        # it should proceed to actually answer this time.
+        # Second turn: student_type is still unset in Postgres (this
+        # message doesn't parse as a student-type reply -- see
+        # test_bare_student_type_reply_answers_the_original_question below
+        # for that path), but profile_asked is now True in checkpointed
+        # state, so the graph must not ask again -- it should proceed to
+        # actually answer this time.
         second = await graph.ainvoke(
             turn_input(session_id, "I meant the dining hall meal plans"), config=config
         )
@@ -354,3 +359,47 @@ async def test_clarification_asked_once_then_question_proceeds(
     assert first["clarification_reason"] == "missing_profile"
     assert second.get("clarification_reason") != "missing_profile"
     assert second["grounded"] is True
+
+
+async def test_bare_student_type_reply_answers_the_original_question(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_checkpointer: AsyncPostgresSaver,
+) -> None:
+    # Regression test for a real bug found live: a user who replies to the
+    # profile-clarifying question with just their student type (e.g.
+    # "Graduate"), not a restated question, had that single word become the
+    # *entire* query for topic classification and retrieval -- producing an
+    # irrelevant answer -- while student_type itself was never actually
+    # parsed or persisted (a "Phase 6 will parse the free-text answer and
+    # persist it" TODO that was never built). Fixed: check_student_profile
+    # now parses a bare student-type reply, persists it, and substitutes
+    # the *original* question (the human message before the clarifying
+    # question) as the effective query for the rest of this turn.
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/dining",
+            title="Meal Plans",
+            chunk_texts=[
+                "Meal plans include Classic Meals and Dining Dollars, with options for "
+                "students living in residence halls across campus dining locations."
+            ],
+            topic=Topic.DINING,
+        )
+        session_id = await _create_session(session, student_type=None)
+        graph = _build_test_graph(session, test_checkpointer)
+        config = config_for(session_id)
+
+        first = await graph.ainvoke(
+            turn_input(session_id, "What meal plans are available?"), config=config
+        )
+        second = await graph.ainvoke(turn_input(session_id, "Graduate"), config=config)
+
+        persisted = await SessionRepository(session).get_by_id(session_id)
+
+    assert first["clarification_reason"] == "missing_profile"
+    assert second.get("clarification_reason") != "missing_profile"
+    assert second["student_type"] == StudentType.GRADUATE
+    assert persisted is not None and persisted.student_type == StudentType.GRADUATE
+    assert second["grounded"] is True
+    assert "Meal plan" in second["answer"] or "meal plan" in second["answer"]

@@ -52,7 +52,7 @@ def build_graph(
     builder: _StateBuilder = StateGraph(GraphState)
 
     _add_node(builder, "load_session", nodes.make_load_session_node(deps))
-    _add_node(builder, "check_student_profile", nodes.make_check_student_profile_node())
+    _add_node(builder, "check_student_profile", nodes.make_check_student_profile_node(deps))
     _add_node(builder, "intent_detection", nodes.make_intent_detection_node())
     _add_node(builder, "question_classification", nodes.make_question_classification_node(deps))
     _add_node(builder, "clarification", nodes.make_clarification_node())
