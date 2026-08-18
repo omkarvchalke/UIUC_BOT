@@ -112,6 +112,15 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     # (both matched on "transfer(ring)"). Added here specifically so a
     # repeat of this collision is caught offline next time.
     TopicCase("I'm a junior transferring in, what's my GPA cutoff?", Topic.ADMISSIONS),
+    # Regression found via a live 326-question sweep (masked until then by
+    # an unrelated generation bug that made every answer look "grounded"
+    # regardless of retrieval quality): "What are the transfer application
+    # deadlines?" scored SCHOLARSHIPS 0.6822 vs ADMISSIONS 0.6764 --
+    # SCHOLARSHIPS' "scholarship application deadlines" phrasing (added for
+    # a different query) shares the same "[X] application deadlines"
+    # structure. Fixed with a new ADMISSIONS exemplar; added here so a
+    # repeat of this collision is caught offline next time.
+    TopicCase("What are the transfer application deadlines?", Topic.ADMISSIONS),
     TopicCase("What's the average class size for incoming freshmen?", Topic.ADMISSIONS),
     TopicCase(
         "How selective is the College of Engineering for freshman applicants?",

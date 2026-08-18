@@ -409,6 +409,20 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         # alone. This exemplar was added to the regression suite too, so
         # future rounds catch a repeat of this specific collision offline.
         "the minimum GPA cutoff to transfer in as a junior",
+        # Found via a live 326-question sweep (a raw-chunk-dump generation
+        # bug had been masking this regression until now): "What are the
+        # transfer application deadlines?" scored SCHOLARSHIPS 0.6822 vs
+        # ADMISSIONS 0.6764 -- SCHOLARSHIPS' "scholarship application
+        # deadlines" phrasing (added for a different query) shares the same
+        # "[X] application deadlines" structure and out-scored ADMISSIONS'
+        # own "deadlines" wording on this near-tie. A first attempt at this
+        # exemplar ("the deadline to submit a transfer application to
+        # UIUC") fixed the target but regressed 2 unrelated cases (bike
+        # share, add/drop deadline) by being too generic on
+        # "deadline"/"application"; this more specific phrasing (naming
+        # "admission" and both terms explicitly) fixes the target with zero
+        # regressions across the full 307-case suite.
+        "fall and spring transfer admission application deadlines",
     ),
     Topic.ACADEMIC_ADVISING: (
         "the paperwork to officially declare or switch your major within LAS",
