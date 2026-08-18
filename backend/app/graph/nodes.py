@@ -265,6 +265,18 @@ def make_metadata_filter_node() -> Node:
     return metadata_filter
 
 
+def _distinct_document_count(results: list[RetrievedChunk]) -> int:
+    """Both retrieval fallbacks below decide "is this filter tier thin
+    enough to relax" by counting *distinct source documents*, not raw
+    chunk hits -- confirmed live, a single low-quality document with 8
+    indexed chunks (all 8 of them the same wrong page, reranking at -6 to
+    -11) satisfied a raw len(results) >= 3 check on its own and silently
+    blocked the student_type fallback from ever running, even though there
+    was really only one (bad) source in play, not three-plus genuinely
+    relevant ones."""
+    return len({chunk.url for chunk in results})
+
+
 def make_retrieve_node(deps: GraphDependencies) -> Node:
     async def retrieve(state: GraphState) -> dict[str, Any]:
         settings = get_settings()
@@ -295,18 +307,19 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
         # of a dead end.
         #
         # topic_filter_min_results (Settings, default 3): below this many
-        # topic-filtered results, treat the classifier's topic guess as more
-        # likely wrong than the corpus actually being that thin, and retry
-        # unfiltered rather than surface a false "nothing found." Chosen to
-        # be clearly below the reranker's input size (rerank_top_k, default
-        # 8, see rerank node) -- a genuinely on-topic query should
-        # comfortably clear this from a corpus with real per-topic coverage
-        # (see test_sources.py's per-topic coverage check).
-        if len(results) < settings.topic_filter_min_results:
+        # topic-filtered *distinct documents*, treat the classifier's topic
+        # guess as more likely wrong than the corpus actually being that
+        # thin, and retry unfiltered rather than surface a false "nothing
+        # found." Chosen to be clearly below the reranker's input size
+        # (rerank_top_k, default 8, see rerank node) -- a genuinely
+        # on-topic query should comfortably clear this from a corpus with
+        # real per-topic coverage (see test_sources.py's per-topic
+        # coverage check).
+        if _distinct_document_count(results) < settings.topic_filter_min_results:
             fallback_results = await deps.hybrid_retriever.search(
                 query, limit=settings.retrieval_candidate_limit, student_type=student_type
             )
-            if len(fallback_results) > len(results):
+            if _distinct_document_count(fallback_results) > _distinct_document_count(results):
                 results = fallback_results
                 topic_filter_applied = False
 
@@ -326,13 +339,16 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
         # through whatever topic filter state the step above settled on,
         # so this only relaxes student_type, not both at once.
         student_type_filter_applied = student_type is not None
-        if student_type is not None and len(results) < settings.topic_filter_min_results:
+        if (
+            student_type is not None
+            and _distinct_document_count(results) < settings.topic_filter_min_results
+        ):
             unfiltered_results = await deps.hybrid_retriever.search(
                 query,
                 limit=settings.retrieval_candidate_limit,
                 topic=topic if topic_filter_applied else None,
             )
-            if len(unfiltered_results) > len(results):
+            if _distinct_document_count(unfiltered_results) > _distinct_document_count(results):
                 results = unfiltered_results
                 student_type_filter_applied = False
 
