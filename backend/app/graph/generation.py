@@ -185,7 +185,27 @@ class ExtractiveAnswerGenerator:
             # No sentence in any of the top chunks shares a query term --
             # fall back to the original placeholder behavior (the full top
             # chunk) rather than returning something emptier than before.
+            # But only when that top chunk actually cleared the same
+            # min_rerank_score floor the picks loop above enforces -- a live
+            # 326-question sweep found this fell through to a *raw,
+            # uncurated* full-chunk dump (nav junk, unrelated boilerplate,
+            # mid-sentence link fragments and all) in ~23% of real
+            # questions, because this fallback ignored the floor entirely
+            # and used chunks[0] unconditionally even when the reranker had
+            # already flagged it as weak. If the top chunk is below the
+            # floor, there's nothing here worth showing as a confident,
+            # grounded answer.
             top = chunks[0]
+            top_score = top.get("rerank_score")
+            if top_score is not None and top_score < self._min_rerank_score:
+                # citation_indices=[] (not the default None) -- None means
+                # "no filtering info, cite everything you were given" (see
+                # GeneratedAnswer's docstring), which is only safe when
+                # chunks is empty too (the greeting/no-chunks callers).
+                # Here chunks is non-empty, just all below the floor, so
+                # leaving this None would cite those same rejected chunks
+                # right alongside a "couldn't find anything" answer.
+                return GeneratedAnswer(text=_NO_RESULTS_ANSWER, grounded=False, citation_indices=[])
             text = f"According to {top['title']} ({top['department']}):\n\n{top['content']}"
             return GeneratedAnswer(text=text, grounded=True, citation_indices=[1])
 
