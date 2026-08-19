@@ -78,7 +78,8 @@ Generation, and the app never asks for personally identifiable information.
 │   └── Dockerfile
 ├── .github/workflows/ci.yml   # Backend + frontend jobs: lint, typecheck, test, build
 ├── docs/
-│   └── production-readiness.md  # Evidence-based readiness report (test results, live E2E findings, gaps)
+│   ├── production-readiness.md  # Evidence-based readiness report (test results, live E2E findings, gaps)
+│   └── source-manifest.md       # Every URL currently ingested, grouped by topic (generated, see below)
 ├── docker-compose.yml          # Base: Postgres (with pgvector), backend, frontend
 ├── docker-compose.override.yml # Auto-loaded for local dev: publishes Postgres's port
 └── docker-compose.prod.yml     # Explicit -f overlay: resource limits, log rotation, no DB ports
@@ -163,6 +164,15 @@ Re-running is cheap: each source's cleaned text is hashed, and unchanged sources
 (no re-chunk, no DB write). Inspect what's been ingested via `GET /api/v1/documents` and
 `GET /api/v1/documents/{id}`. Add a new source by appending a `SourceConfig`/`CrawlSeed` entry to
 the relevant domain module in `app/ingestion/domains/` — no other code changes needed.
+
+**[docs/source-manifest.md](docs/source-manifest.md)** lists every URL actually in the live
+corpus (most of it discovered by the `CrawlSeed` crawlers, not just the manually-curated
+`SourceConfig` entries), grouped by `Topic` with a per-document chunk count. It's generated, not
+hand-maintained — regenerate it after any ingestion change and commit the result:
+
+```bash
+uv run python -m scripts.generate_source_manifest
+```
 
 ### Semantic chunking
 
