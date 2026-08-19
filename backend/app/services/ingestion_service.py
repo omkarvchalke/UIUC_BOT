@@ -12,6 +12,7 @@ from app.ingestion.chunking import ChunkerConfig, role_chunk_config
 from app.ingestion.extracted_document import ExtractedDocument
 from app.ingestion.fetch import FetchError, build_client, fetch_response, fetch_url
 from app.ingestion.html_loader import parse_html
+from app.ingestion.library_hours_loader import parse_library_hours
 from app.ingestion.metadata.audience import infer_audience
 from app.ingestion.metadata.document_type import classify_document_type
 from app.ingestion.metadata.keywords import extract_keywords
@@ -260,4 +261,6 @@ class IngestionService:
         if source.source_type is SourceType.HTML:
             html = raw_bytes.decode("utf-8", errors="replace")
             return parse_html(html, base_url=source.url, fallback_title=source.fallback_title)
+        if source.source_type is SourceType.LIBRARY_HOURS:
+            return parse_library_hours(raw_bytes, fallback_title=source.fallback_title)
         return parse_pdf(raw_bytes, fallback_title=source.fallback_title)

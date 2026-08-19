@@ -98,6 +98,14 @@ class IndexStatus(enum.StrEnum):
 class SourceType(enum.StrEnum):
     HTML = "html"
     PDF = "pdf"
+    # A narrow, source-specific exception, not a general "JSON source" type: every hours page on
+    # library.illinois.edu (Main Stacks, Rare Book & Manuscript, Media Commons, SSHEL, the
+    # library-hours/ aggregator itself) renders its actual hours client-side via the same
+    # WordPress widget, with no server-rendered fallback -- confirmed live, all of them just ship
+    # a "Loading Library Hours..." placeholder. The widget's own JS calls a public,
+    # unauthenticated JSON API (libdirectory.library.illinois.edu) that already contains the real
+    # data, so LIBRARY_HOURS fetches that instead. See app/ingestion/library_hours_loader.py.
+    LIBRARY_HOURS = "library_hours"
 
 
 class Audience(enum.StrEnum):

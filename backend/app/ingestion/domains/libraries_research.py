@@ -22,11 +22,19 @@ SEEDS: tuple[CrawlSeed, ...] = (
 )
 
 SOURCES: tuple[SourceConfig, ...] = (
+    # Replaces a previous HTML source at library.illinois.edu/library-hours/: a live
+    # content-coverage audit found "What are the library hours?" dead-ending because that page
+    # (and every other hours page on the domain -- Main Stacks, Rare Book & Manuscript, Media
+    # Commons, SSHEL all checked) renders its hours table client-side via the same WordPress
+    # widget, with only nav labels ("Email library", "Phone library", ...) in the static HTML.
+    # This fetches the widget's own live JSON data source directly instead -- unit_id=80 is Main
+    # Library, confirmed via libdirectory.library.illinois.edu/Api/UnitsInGateway. See
+    # app/ingestion/library_hours_loader.py.
     SourceConfig(
-        url="https://www.library.illinois.edu/library-hours/",
+        url="https://libdirectory.library.illinois.edu/Api/Unit/80",
         department="University Library",
         topic=Topic.LIBRARIES,
-        source_type=SourceType.HTML,
-        fallback_title="Library Hours",
+        source_type=SourceType.LIBRARY_HOURS,
+        fallback_title="Main Library Hours",
     ),
 )
