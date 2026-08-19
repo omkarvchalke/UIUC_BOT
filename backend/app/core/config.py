@@ -55,6 +55,34 @@ class Settings(BaseSettings):
     crawl_default_max_depth: int = 4
     crawl_default_max_pages: int = 60
 
+    # Generation backend: explicit opt-in, deliberately independent of
+    # groq_api_key's mere presence -- get_answer_generator used to switch
+    # to GroqAnswerGenerator on `if groq_api_key:` alone, which meant
+    # configuring a key to power agentic retrieval below would *also*
+    # silently flip generation off the deterministic extractive default.
+    # Requires both this flag and a real key.
+    groq_generation_enabled: bool = False
+
+    # Agentic retrieval: an LLM judges whether retrieved context is
+    # sufficient to answer the question before generation runs, and if
+    # not, reformulates the query and retries retrieval
+    # (app/graph/retrieval_agent.py, app/llm/retrieval_agent.py). Off by
+    # default -- AlwaysSufficientChecker is used instead, which never
+    # calls Groq and never changes today's single-pass behavior. Also
+    # independent of groq_generation_enabled above: you can run agentic
+    # retrieval with the extractive generator, which is the whole point.
+    agentic_retrieval_enabled: bool = False
+    # Total retrieve() calls allowed per turn: 1 initial + N reformulated
+    # retries. 2 = one retry -- enough to recover from a genuinely bad
+    # first retrieval without multiplying per-turn latency/cost
+    # unboundedly. The router (app/graph/edges.py) enforces this
+    # unconditionally, so the loop always terminates regardless of what
+    # the checker reports -- LangGraph's own recursion_limit (default 25
+    # supersteps) is a backstop, not the mechanism this depends on.
+    agentic_retrieval_max_attempts: int = 2
+    agentic_retrieval_temperature: float = 0.0
+    agentic_retrieval_max_completion_tokens: int = 512
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

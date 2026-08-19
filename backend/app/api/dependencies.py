@@ -10,8 +10,10 @@ from app.database.session import get_db_session
 from app.graph.dependencies import GraphDependencies
 from app.graph.generation import AnswerGenerator, ExtractiveAnswerGenerator
 from app.graph.graph import build_graph
+from app.graph.retrieval_agent import AlwaysSufficientChecker, RetrievalSufficiencyChecker
 from app.graph.state import GraphState
 from app.llm.groq_answer_generator import GroqAnswerGenerator
+from app.llm.retrieval_agent import LlmRetrievalSufficiencyChecker
 from app.repositories.chat_turn_event_repository import ChatTurnEventRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.feedback_repository import FeedbackRepository
@@ -113,10 +115,13 @@ HybridRetrieverDep = Annotated[HybridRetriever, Depends(get_hybrid_retriever)]
 
 
 async def get_answer_generator(db: DbSession) -> AnswerGenerator:
-    # Falls back to the LLM-free placeholder when no Groq key is configured,
-    # so local dev and tests work without a real credential -- only the
-    # actual chat endpoint needs one.
-    if get_settings().groq_api_key:
+    settings = get_settings()
+    # Both an explicit opt-in AND a real key are required -- a key alone
+    # (e.g. configured only to power the agentic retrieval loop below)
+    # must not silently switch generation off the deterministic extractive
+    # default. Falls back to the LLM-free placeholder otherwise, so local
+    # dev and tests work without a real credential.
+    if settings.groq_generation_enabled and settings.groq_api_key:
         return GroqAnswerGenerator()
     # Looks up the tuned min_rerank_score (scripts/tune_retrieval_params.py)
     # fresh on every request, same as get_settings() being called fresh per
@@ -131,10 +136,27 @@ async def get_answer_generator(db: DbSession) -> AnswerGenerator:
 AnswerGeneratorDep = Annotated[AnswerGenerator, Depends(get_answer_generator)]
 
 
+def get_retrieval_sufficiency_checker() -> RetrievalSufficiencyChecker:
+    # Same opt-in-plus-key requirement as get_answer_generator above, but
+    # its own independent flag -- agentic retrieval and LLM generation are
+    # separately toggleable, and this is the mode the feature was built
+    # for: agentic retrieval with the extractive generator.
+    settings = get_settings()
+    if settings.agentic_retrieval_enabled and settings.groq_api_key:
+        return LlmRetrievalSufficiencyChecker()
+    return AlwaysSufficientChecker()
+
+
+RetrievalSufficiencyCheckerDep = Annotated[
+    RetrievalSufficiencyChecker, Depends(get_retrieval_sufficiency_checker)
+]
+
+
 def get_graph_dependencies(
     session_service: SessionServiceDep,
     hybrid_retriever: HybridRetrieverDep,
     answer_generator: AnswerGeneratorDep,
+    retrieval_sufficiency_checker: RetrievalSufficiencyCheckerDep,
 ) -> GraphDependencies:
     settings = get_settings()
     return GraphDependencies(
@@ -145,6 +167,7 @@ def get_graph_dependencies(
         ),
         reranker=CrossEncoderReranker(),
         answer_generator=answer_generator,
+        retrieval_sufficiency_checker=retrieval_sufficiency_checker,
     )
 
 

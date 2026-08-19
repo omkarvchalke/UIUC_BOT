@@ -261,7 +261,8 @@ in the frontend's debug mode).
 
 `app/graph/graph.py::build_graph()` assembles a LangGraph `StateGraph` with conditional routing
 for intent detection, profile-aware clarification, ambiguous-topic clarification, hybrid
-retrieval, cross-encoder reranking, and citation generation. State (`app/graph/state.py::GraphState`)
+retrieval, cross-encoder reranking, citation generation, and (opt-in) an agentic retrieval
+retry loop — see "Agentic Retrieval Loop" below. State (`app/graph/state.py::GraphState`)
 is a typed `TypedDict`; conversation history persists across turns via a Postgres-backed
 `AsyncPostgresSaver` checkpointer (`app/graph/checkpointer.py`), keyed by `thread_id` (the
 session ID) — not an in-memory `MemorySaver`, so it survives process restarts.
@@ -290,12 +291,36 @@ Every turn also persists a `chat_turn_events` row (intent, topic, `needs_clarifi
 `grounded`, citation count, latency) — this is what powers the `/analytics` dashboard, recorded
 fire-and-forget so a logging failure never breaks the chat response itself.
 
+## Agentic Retrieval Loop
+
+Opt-in (`AGENTIC_RETRIEVAL_ENABLED=true`, plus a real `GROQ_API_KEY`): after the normal
+retrieve → rerank → build-context pass, a new `assess_retrieval_sufficiency` node
+(`app/graph/nodes.py`) asks an LLM whether the retrieved context actually answers the question.
+If not, the LLM proposes a reformulated search query and the graph loops back to `retrieve` —
+the first (and only) cycle in this graph, wired via `app/graph/edges.py::route_after_sufficiency_check`
+and `app/graph/graph.py`.
+
+- **Independent of generation**: this loop only steers *retrieval*. The final answer still comes
+  from whichever `AnswerGenerator` is configured (extractive by default) — `GROQ_API_KEY` alone
+  no longer flips generation to Groq; that needs its own explicit `GROQ_GENERATION_ENABLED=true`.
+  This split is deliberate: you can run agentic retrieval with the deterministic extractive
+  generator, which is the mode this feature was built for.
+- **Always terminates**: bounded by `Settings.agentic_retrieval_max_attempts` (default 2 — one
+  initial retrieval plus one reformulated retry), enforced unconditionally by the router
+  regardless of what the LLM reports, so a misbehaving response can never dead-end a turn.
+- **Fails open**: `AlwaysSufficientChecker` (`app/graph/retrieval_agent.py`) is the default when
+  the feature is off — no Groq call, no behavior change. When it's on,
+  `LlmRetrievalSufficiencyChecker` (`app/llm/retrieval_agent.py`) treats every degraded case
+  (empty `GroqError`, malformed JSON, a missing required field) as `sufficient=True` — it can
+  make retrieval smarter, but a failure here never breaks or hangs the default experience.
+
 ## Groq Integration and Prompt Engineering
 
 `app/api/dependencies.py::get_answer_generator()` picks the real `GroqAnswerGenerator`
-(`app/llm/groq_answer_generator.py`) when `GROQ_API_KEY` is set, and falls back to an
-`ExtractiveAnswerGenerator` when it isn't — local dev and most tests work without a key; only
-`POST /api/v1/chat` giving a real generated answer needs one.
+(`app/llm/groq_answer_generator.py`) when both `GROQ_GENERATION_ENABLED=true` and `GROQ_API_KEY`
+are set, and falls back to an `ExtractiveAnswerGenerator` otherwise — local dev and most tests
+work without either. This is a separate switch from the agentic retrieval loop above: a key
+alone no longer implicitly changes which generator runs.
 
 - **Model choice** (`Settings.groq_model`, `backend/.env` `GROQ_MODEL`): `llama-3.3-70b-versatile`.
   The original pick, `llama-4-scout-17b-16e-instruct`, was selected for a 30,000 TPM headroom
@@ -467,7 +492,8 @@ docker exec uiuc_bot-postgres-1 psql -U illiniguide -d postgres -c "CREATE DATAB
 DATABASE_URL="postgresql+asyncpg://illiniguide:change-me@localhost:5433/illiniguide_test" uv run alembic upgrade head
 ```
 
-**259/259 tests pass, ~88% line coverage.** The handful of tests gated on a real Groq call skip
+**631/631 tests pass** (plus 11 documented `xfail` topic-classifier residuals, see
+`app/evaluation/topic_regression_set.py`). The handful of tests gated on a real Groq call skip
 themselves when `GROQ_API_KEY` isn't set, so the suite (and CI) stays green either way.
 
 ```bash

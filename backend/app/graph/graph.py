@@ -29,7 +29,7 @@ def _add_node(builder: _StateBuilder, name: str, node: nodes.Node) -> None:
     # our `Node` Callable type alias -- structurally correct at runtime
     # (verified: every node below runs and is exercised by tests), so this
     # centralizes one suppression instead of repeating type: ignore at each
-    # of the 12 add_node call sites.
+    # of the 13 add_node call sites.
     builder.add_node(name, node)  # type: ignore[call-overload]
 
 
@@ -42,12 +42,19 @@ def build_graph(
     Check Student Profile -> Intent Detection -> Question Classification ->
     Metadata Filter -> Retriever -> Hybrid Search -> Re-ranker -> Context
     Builder -> Generate Response -> Citation Generator -> Save Conversation
-    State) with two deliberate deviations, both explained where they're
+    State) with three deliberate deviations, each explained where it's
     built: "Retriever" and "Hybrid Search" are merged into one `retrieve`
     node (Phase 4's HybridRetriever already performs both as one operation),
-    and a `clarification` node is added (not in the spec's literal list, but
+    a `clarification` node is added (not in the spec's literal list, but
     implied by "the chatbot may ask about student type" and required for
-    genuine conditional routing rather than a single straight-line path).
+    genuine conditional routing rather than a single straight-line path),
+    and an `assess_retrieval_sufficiency` node sits between context_builder
+    and generate_response with a conditional edge back to `retrieve` --
+    the graph's first (and only) cycle, gated by
+    Settings.agentic_retrieval_enabled and always bounded by
+    Settings.agentic_retrieval_max_attempts (see
+    edges.route_after_sufficiency_check), never relying on LangGraph's
+    recursion_limit as the actual termination mechanism.
     """
     builder: _StateBuilder = StateGraph(GraphState)
 
@@ -60,6 +67,11 @@ def build_graph(
     _add_node(builder, "retrieve", nodes.make_retrieve_node(deps))
     _add_node(builder, "re_ranker", nodes.make_reranker_node(deps))
     _add_node(builder, "context_builder", nodes.make_context_builder_node())
+    _add_node(
+        builder,
+        "assess_retrieval_sufficiency",
+        nodes.make_assess_retrieval_sufficiency_node(deps),
+    )
     _add_node(builder, "generate_response", nodes.make_generate_response_node(deps))
     _add_node(builder, "citation_generator", nodes.make_citation_generator_node())
     _add_node(builder, "save_conversation_state", nodes.make_save_conversation_state_node())
@@ -85,7 +97,12 @@ def build_graph(
     builder.add_edge("metadata_filter", "retrieve")
     builder.add_edge("retrieve", "re_ranker")
     builder.add_edge("re_ranker", "context_builder")
-    builder.add_edge("context_builder", "generate_response")
+    builder.add_edge("context_builder", "assess_retrieval_sufficiency")
+    builder.add_conditional_edges(
+        "assess_retrieval_sufficiency",
+        edges.route_after_sufficiency_check,
+        {"retry": "retrieve", "continue": "generate_response"},
+    )
     builder.add_edge("generate_response", "citation_generator")
     builder.add_edge("citation_generator", "save_conversation_state")
     builder.add_edge("save_conversation_state", END)

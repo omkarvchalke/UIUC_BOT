@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.graph.generation import AnswerGenerator
+from app.graph.retrieval_agent import RetrievalSufficiencyChecker
 from app.retrieval.hybrid_search import HybridRetriever
 from app.retrieval.reranker import CrossEncoderReranker
 from app.retrieval.topic_classifier import TopicClassifier
@@ -18,3 +19,4 @@ class GraphDependencies:
     topic_classifier: TopicClassifier
     reranker: CrossEncoderReranker
     answer_generator: AnswerGenerator
+    retrieval_sufficiency_checker: RetrievalSufficiencyChecker

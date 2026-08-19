@@ -1,13 +1,17 @@
 import uuid
 
+import pytest
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import app.graph.edges as edges_module
+from app.core.config import Settings
 from app.graph.dependencies import GraphDependencies
 from app.graph.generation import ExtractiveAnswerGenerator
 from app.graph.graph import build_graph, config_for, turn_input
-from app.graph.state import GraphState
+from app.graph.retrieval_agent import AlwaysSufficientChecker, SufficiencyAssessment
+from app.graph.state import GraphState, RetrievedChunkState
 from app.ingestion.chunking import ChunkResult
 from app.models.conversation_session import StudentType
 from app.models.document import SourceType, Topic
@@ -28,6 +32,7 @@ def _build_deps(session: AsyncSession) -> GraphDependencies:
         topic_classifier=TopicClassifier(),
         reranker=CrossEncoderReranker(),
         answer_generator=ExtractiveAnswerGenerator(),
+        retrieval_sufficiency_checker=AlwaysSufficientChecker(),
     )
 
 
@@ -492,3 +497,143 @@ async def test_query_override_does_not_leak_into_a_later_unrelated_turn(
     assert third["topic"] == Topic.COURSE_REGISTRATION
     assert third["grounded"] is True
     assert "Register for Classes" in third["answer"]
+
+
+class _InsufficientThenSufficientChecker:
+    """Stub sufficiency checker: reports insufficient exactly once (with a
+    reformulated query), then sufficient on every call after -- proves the
+    agentic retrieval loop actually retries and still reaches a normal
+    completion, without depending on a real Groq call."""
+
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    async def assess(
+        self, *, query: str, context: str, chunks: list[RetrievedChunkState]
+    ) -> SufficiencyAssessment:
+        self.call_count += 1
+        if self.call_count == 1:
+            return SufficiencyAssessment(
+                sufficient=False,
+                reformulated_query=f"{query} freshman residence hall requirement",
+                reasoning="stub: first pass insufficient",
+            )
+        return SufficiencyAssessment(sufficient=True, reformulated_query=None, reasoning="stub: now sufficient")
+
+
+class _AlwaysInsufficientChecker:
+    """Stub sufficiency checker that never agrees the context is enough --
+    proves route_after_sufficiency_check's own attempt-count bound stops
+    the loop, not LangGraph's recursion_limit (a very different failure
+    mode: GraphRecursionError instead of a normal completed turn)."""
+
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    async def assess(
+        self, *, query: str, context: str, chunks: list[RetrievedChunkState]
+    ) -> SufficiencyAssessment:
+        self.call_count += 1
+        return SufficiencyAssessment(
+            sufficient=False, reformulated_query=f"{query} v{self.call_count}", reasoning="stub: always insufficient"
+        )
+
+
+async def test_agentic_retrieval_loop_retries_then_terminates_on_sufficient(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_checkpointer: AsyncPostgresSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(edges_module, "get_settings", lambda: Settings(agentic_retrieval_max_attempts=2))
+
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/housing",
+            title="Freshman Housing",
+            chunk_texts=["Freshmen must live on campus during their first year in residence halls."],
+            topic=Topic.HOUSING,
+        )
+        deps = _build_deps(session)
+        checker = _InsufficientThenSufficientChecker()
+        deps.retrieval_sufficiency_checker = checker  # type: ignore[assignment]
+        graph = build_graph(deps, checkpointer=test_checkpointer)
+        session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
+
+        result = await graph.ainvoke(
+            turn_input(session_id, "Where do freshmen live?"), config=config_for(session_id)
+        )
+
+    assert checker.call_count == 2
+    assert result["retrieval_attempt"] == 2
+    assert result["grounded"] is True
+
+
+async def test_agentic_retrieval_loop_stops_at_max_attempts_not_recursion_limit(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_checkpointer: AsyncPostgresSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(edges_module, "get_settings", lambda: Settings(agentic_retrieval_max_attempts=2))
+
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/housing",
+            title="Freshman Housing",
+            chunk_texts=["Freshmen must live on campus during their first year in residence halls."],
+            topic=Topic.HOUSING,
+        )
+        deps = _build_deps(session)
+        checker = _AlwaysInsufficientChecker()
+        deps.retrieval_sufficiency_checker = checker  # type: ignore[assignment]
+        graph = build_graph(deps, checkpointer=test_checkpointer)
+        session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
+
+        result = await graph.ainvoke(
+            turn_input(session_id, "Where do freshmen live?"), config=config_for(session_id)
+        )
+
+    assert checker.call_count == 2
+    assert result["retrieval_attempt"] == 2
+    assert "answer" in result
+
+
+async def test_agentic_retrieval_state_does_not_leak_into_a_later_turn(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_checkpointer: AsyncPostgresSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression-shaped test for the exact stale-state pitfall this
+    codebase already hit once with query_override: a second turn in the
+    same session must not inherit reformulated_query/retrieval_attempt
+    left over from an earlier turn's loop."""
+    monkeypatch.setattr(edges_module, "get_settings", lambda: Settings(agentic_retrieval_max_attempts=2))
+
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/housing",
+            title="Freshman Housing",
+            chunk_texts=["Freshmen must live on campus during their first year in residence halls."],
+            topic=Topic.HOUSING,
+        )
+        deps = _build_deps(session)
+        checker = _InsufficientThenSufficientChecker()
+        deps.retrieval_sufficiency_checker = checker  # type: ignore[assignment]
+        graph = build_graph(deps, checkpointer=test_checkpointer)
+        session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
+        config = config_for(session_id)
+
+        first = await graph.ainvoke(turn_input(session_id, "Where do freshmen live?"), config=config)
+        second = await graph.ainvoke(turn_input(session_id, "Where do freshmen live?"), config=config)
+
+    assert first["retrieval_attempt"] == 2
+    # Second turn's checker call_count kept climbing (3rd call overall is
+    # "insufficient" again per the stub's own count == 1 check never
+    # re-triggering -- call_count is 3 by the time turn 2 starts, so the
+    # stub's `if self.call_count == 1` branch doesn't fire again), but the
+    # real assertion that matters is state: retrieval_attempt must reset
+    # to reflect only *this* turn's retrieve() calls, not accumulate
+    # across turns.
+    assert second["retrieval_attempt"] == 1

@@ -25,6 +25,7 @@ from app.evaluation.retrieval_metrics import context_precision
 from app.graph.dependencies import GraphDependencies
 from app.graph.generation import ExtractiveAnswerGenerator
 from app.graph.graph import build_graph, config_for, turn_input
+from app.graph.retrieval_agent import AlwaysSufficientChecker
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.session_repository import SessionRepository
 from app.repositories.vector_repository import VectorRepository
@@ -71,6 +72,11 @@ async def run_tuning_gate(
         ),
         reranker=CrossEncoderReranker(),
         answer_generator=ExtractiveAnswerGenerator(min_rerank_score=min_rerank_score),
+        # This gate is specifically about isolating min_rerank_score's own
+        # effect (see the module docstring) -- the agentic retrieval loop
+        # is a different, independent knob and must stay disabled here so
+        # it can't confound the comparison.
+        retrieval_sufficiency_checker=AlwaysSufficientChecker(),
     )
     graph = build_graph(deps, checkpointer=InMemorySaver())
     session_repository = SessionRepository(db)

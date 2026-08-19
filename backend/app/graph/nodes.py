@@ -81,6 +81,19 @@ def _effective_query(state: GraphState) -> str:
     return _latest_human_message(state)
 
 
+def _retrieval_query(state: GraphState) -> str:
+    """What retrieve/re_ranker actually search/score against -- the LLM's
+    reformulated_query (see state.py's docstring) takes priority when the
+    agentic retrieval loop set one, else falls back to _effective_query.
+    Deliberately NOT used by generate_response or question_classification:
+    the final answer must address what the user actually asked, not an
+    internal keyword-expanded retrieval string."""
+    reformulated = state.get("reformulated_query")
+    if reformulated:
+        return reformulated
+    return _effective_query(state)
+
+
 def _to_chunk_state(
     chunk: RetrievedChunk, *, rerank_score: float | None = None
 ) -> RetrievedChunkState:
@@ -246,11 +259,11 @@ def make_clarification_node() -> Node:
 
 def make_metadata_filter_node() -> Node:
     async def metadata_filter(state: GraphState) -> dict[str, Any]:
-        # A named stage per the spec's graph, even though today it's a
-        # pass-through: student_type and topic both already sit in state
-        # exactly as the retrieve node needs them. Kept as its own node so
-        # any future filter rule has an obvious home separate from the
-        # retrieval call itself.
+        # A named stage per the spec's graph, even though most of its job
+        # is still a pass-through: student_type and topic both already sit
+        # in state exactly as the retrieve node needs them. Kept as its
+        # own node so any future filter rule has an obvious home separate
+        # from the retrieval call itself.
         #
         # HybridRetriever/VectorRepository also accept audience/document_type
         # filters now (see app/retrieval/hybrid_search.py), but there's no
@@ -260,7 +273,17 @@ def make_metadata_filter_node() -> Node:
         # Wiring a real signal through, once one exists, is a one-line
         # addition to retrieve's search(...) call below -- no retrieval-stack
         # changes needed at that point.
-        return {}
+        #
+        # This IS the one real job it has: metadata_filter is the sole node
+        # on the path to retrieve, running exactly once per turn before the
+        # retrieve<->assess_retrieval_sufficiency cycle can begin -- so
+        # it's the only correct place to reset the agentic retrieval loop's
+        # per-turn state. Explicitly cleared (not omitted), same discipline
+        # query_override's docstring already describes: without this, a
+        # checkpointed reformulated_query/retrieval_attempt from a
+        # *previous* turn's loop would leak into this turn's first
+        # retrieve() call.
+        return {"reformulated_query": None, "retrieval_attempt": 0}
 
     return metadata_filter
 
@@ -280,7 +303,7 @@ def _distinct_document_count(results: list[RetrievedChunk]) -> int:
 def make_retrieve_node(deps: GraphDependencies) -> Node:
     async def retrieve(state: GraphState) -> dict[str, Any]:
         settings = get_settings()
-        query = _effective_query(state)
+        query = _retrieval_query(state)
         topic = state.get("topic")
         student_type = state.get("student_type")
 
@@ -366,14 +389,22 @@ def make_retrieve_node(deps: GraphDependencies) -> Node:
             student_type_filter_applied=student_type_filter_applied,
             result_count=len(results),
         )
-        return {"retrieved_chunks": [_to_chunk_state(chunk) for chunk in results]}
+        return {
+            "retrieved_chunks": [_to_chunk_state(chunk) for chunk in results],
+            # Incremented on every entry, including loop-back re-entries
+            # from route_after_sufficiency_check within the same turn --
+            # metadata_filter reset this to 0 once at the start of the
+            # turn (see its docstring), so this counts real attempts, not
+            # turns.
+            "retrieval_attempt": state.get("retrieval_attempt", 0) + 1,
+        }
 
     return retrieve
 
 
 def make_reranker_node(deps: GraphDependencies) -> Node:
     async def rerank(state: GraphState) -> dict[str, Any]:
-        query = _effective_query(state)
+        query = _retrieval_query(state)
         candidates = [(c["content"], c) for c in state.get("retrieved_chunks", [])]
         # rerank_top_k (Settings, default 8; raised from 5): answers were
         # coming back thin partly because the model only had 5 chunks of
@@ -398,6 +429,36 @@ def make_context_builder_node() -> Node:
         return {"context": context}
 
     return context_builder
+
+
+def make_assess_retrieval_sufficiency_node(deps: GraphDependencies) -> Node:
+    async def assess_retrieval_sufficiency(state: GraphState) -> dict[str, Any]:
+        # Greeting/clarification turns never reach here (see graph.py's
+        # wiring), so no special-casing needed for those the way
+        # generate_response/citation_generator do.
+        assessment = await deps.retrieval_sufficiency_checker.assess(
+            query=_retrieval_query(state),
+            context=state.get("context", ""),
+            chunks=state.get("reranked_chunks", []),
+        )
+        logger.info(
+            "graph_retrieval_sufficiency",
+            session_id=state["session_id"],
+            attempt=state.get("retrieval_attempt", 0),
+            sufficient=assessment.sufficient,
+            reasoning=assessment.reasoning,
+        )
+        return {
+            "retrieval_sufficient": assessment.sufficient,
+            # Explicitly set on both branches (never omitted), same
+            # discipline as query_override/reformulated_query elsewhere in
+            # this file -- a stale reformulated_query from a prior
+            # iteration must not survive into a "turns out we're sufficient
+            # now" pass.
+            "reformulated_query": assessment.reformulated_query if not assessment.sufficient else None,
+        }
+
+    return assess_retrieval_sufficiency
 
 
 def make_generate_response_node(deps: GraphDependencies) -> Node:

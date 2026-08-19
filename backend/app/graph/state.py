@@ -80,6 +80,31 @@ class GraphState(TypedDict):
     reranked_chunks: NotRequired[list[RetrievedChunkState]]
     context: NotRequired[str]
 
+    # Agentic retrieval loop (assess_retrieval_sufficiency <-> retrieve,
+    # see app/graph/edges.py::route_after_sufficiency_check). Deliberately
+    # separate from query_override above, not reused: query_override
+    # recovers the user's *real* question after a bare profile reply and
+    # is read by generate_response too, while reformulated_query is an
+    # internal search-string refinement that must steer retrieval only --
+    # generate_response and question_classification never read it, so the
+    # final answer always addresses what the user actually asked
+    # regardless of how retrieval got there. Both fields are explicitly
+    # reset to None/0 every turn by metadata_filter (the sole node on the
+    # path to retrieve, run once per turn before this cycle can start) --
+    # the same stale-state discipline query_override's own docstring
+    # describes; a previous turn's leftover value must never leak into
+    # this turn's first retrieve() call.
+    reformulated_query: NotRequired[str | None]
+    # How many retrieve() calls have happened so far this turn (1 after
+    # the first). Incremented by retrieve itself on every entry, including
+    # loop-back re-entries within the same turn.
+    retrieval_attempt: NotRequired[int]
+    # The sufficiency checker's raw verdict from the most recent pass --
+    # always freshly set by assess_retrieval_sufficiency immediately
+    # before route_after_sufficiency_check reads it, so (unlike the two
+    # fields above) it needs no separate per-turn reset.
+    retrieval_sufficient: NotRequired[bool]
+
     # Generation outputs.
     answer: NotRequired[str]
     citations: NotRequired[list[CitationState]]
