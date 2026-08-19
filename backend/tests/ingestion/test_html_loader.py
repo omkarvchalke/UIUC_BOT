@@ -395,3 +395,65 @@ def test_sibling_paragraphs_around_an_inline_link_stay_on_separate_lines() -> No
     )
     result = parse_html(html, base_url=_BASE_URL)
     assert result.sections[0].text == "Contact your Academic College.\nA separate paragraph."
+
+
+def test_table_with_header_row_formats_as_labeled_lines() -> None:
+    html = (
+        "<html><body><h1>Deadlines</h1>"
+        "<table>"
+        "<tr><th>Applicant</th><th>Deadline</th></tr>"
+        "<tr><td>First-year applicants</td><td>November 1</td></tr>"
+        "<tr><td>Transfer applicants</td><td>March 1</td></tr>"
+        "</table>"
+        "</body></html>"
+    )
+    result = parse_html(html, base_url=_BASE_URL)
+    assert "First-year applicants: Deadline: November 1" in result.sections[0].text
+    assert "Transfer applicants: Deadline: March 1" in result.sections[0].text
+
+
+def test_table_without_header_row_falls_back_to_pipe_joined_cells() -> None:
+    html = (
+        "<html><body><h1>T</h1>"
+        "<table><tr><td>Room 101</td><td>Available</td></tr></table>"
+        "</body></html>"
+    )
+    result = parse_html(html, base_url=_BASE_URL)
+    assert "Room 101 | Available" in result.sections[0].text
+
+
+def test_table_rows_do_not_leak_into_unstructured_flat_lines() -> None:
+    # Regression guard for the bug this feature replaces: without table
+    # handling, each <td>'s text becomes its own unlabeled line.
+    html = (
+        "<html><body><h1>Deadlines</h1>"
+        "<table>"
+        "<tr><th>Applicant</th><th>Deadline</th></tr>"
+        "<tr><td>First-year applicants</td><td>November 1</td></tr>"
+        "</table>"
+        "</body></html>"
+    )
+    result = parse_html(html, base_url=_BASE_URL)
+    lines = result.sections[0].text.split("\n")
+    assert "November 1" not in lines
+    assert "First-year applicants" not in lines
+
+
+def test_nested_table_is_not_formatted_twice() -> None:
+    html = (
+        "<html><body><h1>T</h1>"
+        "<table><tr><td>Outer cell with "
+        "<table><tr><td>Inner A</td><td>Inner B</td></tr></table>"
+        "text</td><td>Second column</td></tr></table>"
+        "</body></html>"
+    )
+    result = parse_html(html, base_url=_BASE_URL)
+    # The nested table's cells are captured once, flattened, as part of the
+    # outer cell's own text -- not formatted again as a second row block.
+    assert result.sections[0].text.count("Inner A") == 1
+
+
+def test_table_with_single_column_has_no_header_colon_prefix() -> None:
+    html = "<html><body><h1>T</h1><table><tr><td>Just one column</td></tr></table></body></html>"
+    result = parse_html(html, base_url=_BASE_URL)
+    assert result.sections[0].text == "Just one column"

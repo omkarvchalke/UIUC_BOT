@@ -128,6 +128,8 @@ def _to_chunk_state(
         "topic": chunk.topic.value,
         "subtopic": chunk.subtopic,
         "fused_score": chunk.fused_score,
+        "section_index": chunk.section_index,
+        "parent_text": chunk.parent_text,
     }
     if rerank_score is not None:
         state["rerank_score"] = rerank_score
@@ -509,11 +511,29 @@ def make_reranker_node(deps: GraphDependencies) -> Node:
 def make_context_builder_node() -> Node:
     async def context_builder(state: GraphState) -> dict[str, Any]:
         chunks = state.get("reranked_chunks", [])
-        context = "\n\n".join(
-            f"[{i}] {chunk['title']} ({chunk['department']}):\n{chunk['content']}"
-            for i, chunk in enumerate(chunks, start=1)
-        )
-        return {"context": context}
+        # Source Manifest V2, Part 14: a chunk whose section had to be split into multiple
+        # children carries parent_text, the full un-split section -- expanding to it here gives
+        # the generator complete context (a list, a table, a multi-step procedure) instead of a
+        # mid-list/mid-step fragment, without sending the whole page just because one child
+        # matched (parent_text is bounded to that one section).
+        #
+        # Deduplicated per (document_id, section_index): two sibling chunks from the same split
+        # section only get the full section text once, on the first (highest-ranked) sibling --
+        # otherwise the same block would appear twice in context. Every chunk still gets its own
+        # [n] entry regardless of whether it was expanded (citation_generator's citation_indices
+        # are 1-based positions into this same list, so entries can't be dropped or reordered).
+        expanded_sections: set[tuple[str, int]] = set()
+        blocks: list[str] = []
+        for i, chunk in enumerate(chunks, start=1):
+            section_key = (chunk["document_id"], chunk["section_index"])
+            parent_text = chunk.get("parent_text")
+            if parent_text and section_key not in expanded_sections:
+                expanded_sections.add(section_key)
+                content = parent_text
+            else:
+                content = chunk["content"]
+            blocks.append(f"[{i}] {chunk['title']} ({chunk['department']}):\n{content}")
+        return {"context": "\n\n".join(blocks)}
 
     return context_builder
 

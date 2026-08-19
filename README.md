@@ -46,11 +46,13 @@ Generation, and the app never asks for personally identifiable information.
 │   │   ├── schemas/             # Pydantic request/response schemas -- includes analytics.py
 │   │   ├── core/                 # Config, logging, rate limiting, cross-cutting concerns
 │   │   ├── graph/                  # LangGraph state, nodes, edges, graph assembly, checkpointer
-│   │   ├── retrieval/               # BM25, hybrid (RRF) search, cross-encoder reranker, topic classifier
+│   │   ├── retrieval/               # BM25, hybrid (RRF) search, cross-encoder reranker, topic classifier,
+│   │   │                              retrieval_priority boost (priority.py)
 │   │   ├── embeddings/                # Local embedding generation (sentence-transformers)
 │   │   ├── database/                    # DB session/engine setup
 │   │   ├── llm/                           # Groq client, prompt builder, GroqAnswerGenerator
-│   │   ├── ingestion/                       # HTML/PDF loaders, cleaning, semantic chunking, source manifest
+│   │   ├── ingestion/                       # HTML/PDF loaders, cleaning, role-aware semantic chunking,
+│   │   │   │                                  deterministic chunk IDs (chunk_identity.py)
 │   │   │   ├── domains/                       # 14 Knowledge Domain modules (source URLs + crawl seeds)
 │   │   │   └── metadata/                        # audience/document_type/keyword extraction
 │   │   ├── prompts/                              # Prompt templates (rag_system_prompt.txt)
@@ -59,7 +61,9 @@ Generation, and the app never asks for personally identifiable information.
 │   │   └── utils/                                    # Shared helpers
 │   ├── migrations/            # Alembic migrations (async env.py)
 │   ├── scripts/                # run_ingestion / run_indexing / run_crawl / discover_sources /
-│   │                              eval_answers / eval_rag / load_test / backfill_semantic_chunks
+│   │                              eval_answers / eval_rag / load_test / backfill_semantic_chunks /
+│   │                              remap_topics_v2 / generate_source_manifest
+│   │   └── data/                 # source_manifest_v2.md -- the external Source Manifest V2 reference doc
 │   ├── tests/
 │   ├── alembic.ini
 │   ├── pyproject.toml (uv)
@@ -150,10 +154,10 @@ uv run alembic revision --autogenerate -m "add some_table"   # generate a new mi
 
 ## Document Ingestion
 
-Fetches every source in `app/ingestion/sources.py` (a manifest of official, verified UIUC HTML
-and PDF pages, organized across 14 Knowledge Domain modules), cleans the text, splits it via
-heading-aware **semantic chunking** (not fixed-size — see below), and persists documents + chunks
-in PostgreSQL:
+Fetches every source in `app/ingestion/sources.py` (a manifest of official, verified UIUC pages —
+see [Source Manifest V2 metadata](#source-manifest-v2-metadata) below — organized across 14
+Knowledge Domain modules), cleans the text, splits it via structure-aware, role-aware **semantic
+chunking** (not fixed-size — see below), and persists documents + chunks in PostgreSQL:
 
 ```bash
 cd backend
@@ -184,13 +188,58 @@ so a chunk never ends up as a lone one-line heading with no content. Each chunk 
 `subtopic` (the joined heading path, e.g. `"Applying > Freshman > Required Documents"`), surfaced
 in the API response and in the frontend's debug mode.
 
+- **Table-aware extraction**: `_extract_sections` formats `<table>` elements into
+  retrieval-friendly `label: header: value` lines instead of the unstructured cell-by-cell text a
+  plain `get_text()` walk produces — e.g. an "Applicant | Deadline" table with a "First-year
+  applicants | November 1" row becomes the single line `First-year applicants: Deadline: November
+  1`, keeping the row's meaning intact instead of scattering it across unlabeled fragments.
+- **Role-aware chunk sizing**: `app/ingestion/chunking.py::role_chunk_config` sizes chunks by each
+  source's `SourceRole` (a `deadline` page targets ~450 tokens/62 overlap; a `policy` or
+  `procedure` page ~600/87; a terse `directory` listing ~325/37 — see the enum for the full table).
+  A source with no confidently-known role falls back to the global default rather than guessing.
+- **Parent/child context**: a `Section` that had to be split into multiple chunks records
+  `DocumentChunk.section_index` (which section) and `DocumentChunk.parent_text` (that section's
+  full, un-split text, set only when a split actually happened). `context_builder`
+  (`app/graph/nodes.py`) expands a matched chunk to its `parent_text` when present — full context
+  for a list, table, or multi-step procedure without ever sending a whole page — deduplicated per
+  section so two sibling chunks from the same split section don't double the same text in context.
+- **Deterministic chunk IDs**: `app/ingestion/chunk_identity.py::compute_chunk_id` derives each
+  chunk's UUID from `(document_id, section_index, local_index, sha256(content))` — re-chunking a
+  document whose content didn't change reproduces the same chunk IDs rather than random new ones.
+
+### Source Manifest V2 metadata
+
+Every `Document` carries a small set of governance/retrieval fields, defined in
+`app/models/document.py` and populated at ingestion time (`app/retrieval/priority.py`):
+
+| Field | Purpose |
+|---|---|
+| `topic` / `subtopic` | Top-level `Topic` (21 values, string-backed enum — adding one is a data change, never an `ALTER TYPE`) plus an optional category-level `subtopic` (e.g. `"OPT"` under `INTERNATIONAL_STUDENTS_IMMIGRATION`) — distinct from `DocumentChunk.subtopic`, the per-chunk heading path. |
+| `source_role` | What kind of content this is (`policy`, `deadline`, `procedure`, `course`, `program`, `service`, `directory`, `news`, `historical`, `reference`) — drives chunk sizing and a `retrieval_priority` baseline. Left `None` rather than forced when a source can't be confidently classified. |
+| `authority_score` / `retrieval_priority` | Derived, not copied from any external source: `authority_score` is `10` for `uiuc_official`, `8` for `authorized_external` (e.g. MTD transit info); `retrieval_priority` is a `source_role`/`temporal_scope`-based baseline. Applied in `HybridRetriever._fuse` as a small (±10%, `settings.retrieval_priority_boost_range`) multiplier on the fused RRF score — a **boost, not a filter or override**; semantic/BM25 relevance still dominates ranking. |
+| `temporal_scope` / `academic_year` | `current` / `historical` / `archive` / `unspecified` — a current source generally outranks a historical one for the same query via the `retrieval_priority` boost above, but historical sources are never deleted (e.g. past commencement ceremony pages stay indexed, just deprioritized). |
+| `index_status` | `approved` / `review` / `blocked` / `deprecated`. Only `approved` documents are ever returned to users — enforced as a hard filter on **both** the pgvector side (`VectorRepository._filters`) and the in-process BM25 side (`HybridRetriever._get_corpus`), so the two rankers always score the same eligible pool. Non-approved rows are never deleted, kept for audit/history. |
+| `embedding_version` | Stamped from `settings.embedding_version` whenever a document's chunks are (re-)embedded — identifies which embedding config produced a given chunk's vectors, for a future migration to detect which documents still need re-embedding after a model change. |
+| `http_status` / `word_count` | Recorded from the most recent crawl/fetch, for source-health monitoring. |
+
+`backend/scripts/data/source_manifest_v2.md` holds the full external Source Manifest V2 reference
+document (all 1,069 rows across 21 topics) this schema was migrated to match. Existing documents
+were remapped onto the new 21-topic taxonomy via `backend/scripts/remap_topics_v2.py`, which
+re-runs the (also-migrated) `TopicClassifier` against each document's own stored text rather than
+a hand-copied per-URL lookup table — the same trusted mechanism the crawler already uses for newly
+discovered pages, so no topic value is invented.
+
 ### Content coverage
 
-38 sources/crawl seeds across 14 Knowledge Domains, expanding via the crawler (below) into
-**1,301 indexed documents** as of the last real ingestion run (`GET /api/v1/analytics/summary` —
-also visible live on the `/analytics` dashboard). A live 20-question end-to-end test this session
-found real, honest coverage gaps rather than claiming completeness — see
-[docs/production-readiness.md](docs/production-readiness.md) for exactly which topics (OPT, CPT,
+35 crawl seeds plus 78 manually-curated sources across 14 Knowledge Domains, expanding via the
+crawler (below) into **1,082 indexed documents, 8,583 chunks, across 20 of the 21 Source Manifest
+V2 topics** as of the last real ingestion run (`docs/source-manifest.md` — generated per-topic
+breakdown; also `GET /api/v1/analytics/summary` and the `/analytics` dashboard).
+`FINANCIAL_AID_COSTS` is currently empty — a genuine, tracked content gap (no crawled/classified
+page has landed there yet), not a bug. A live 20-question end-to-end test this session found real,
+honest coverage gaps rather than claiming completeness — see
+[docs/production-readiness.md](docs/production-readiness.md) for exactly which topics (OPT/CPT —
+now subtopics under International Students & Immigration, not their own top-level topics —
 career services, academic advising, student orgs, out-of-state tuition) currently return zero
 citations. The app's honesty guardrail (the `grounded` self-report, below) correctly says "I don't
 have enough information" for these rather than fabricating an answer — the gap is in content
@@ -225,8 +274,12 @@ for hours questions instead of confidently inventing an answer.
 Hand-curating individual URLs doesn't scale and goes stale as UIUC restructures its sites.
 `app/ingestion/crawl_seeds.py` lists the approved UIUC/UI-System domains (one `CrawlSeed` each, no
 `path_prefixes`) and `Crawler` (`app/ingestion/crawler.py`) does bounded BFS crawls of each,
-`max_depth=4` / `max_pages=60` per seed by default — this is what actually produces the 1,301
-indexed documents from 38 starting seeds:
+`max_depth=4` / `max_pages=60` per seed by default — this is what actually produces the 1,082
+indexed documents from 35 starting seeds. HTML/web only: a PDF found mid-crawl is logged and
+skipped rather than silently ingested (Source Manifest V2, Part 19) — see
+`app/ingestion/pdf_loader.py` and the one deliberately-curated exception in
+`app/ingestion/domains/international_services.py` for how a PDF source can still be added
+manually when its content is real, checked value (a sample I-20 form):
 
 ```bash
 cd backend
@@ -265,7 +318,9 @@ result with `GET /api/v1/retrieve?query=...&topic=...&student_type=...&audience=
 — it fuses pgvector cosine-distance search (`VectorRepository`, an HNSW index on `embedding`) with
 an in-process BM25 index via Reciprocal Rank Fusion and returns each result's per-ranker rank,
 fused score, subtopic, and rerank score, for inspecting retrieval quality directly (also surfaced
-in the frontend's debug mode).
+in the frontend's debug mode). `index_status` is a hard filter applied identically on both sides
+of the fusion, and `retrieval_priority` applies as a small boost on the fused score — see
+[Source Manifest V2 metadata](#source-manifest-v2-metadata) above.
 
 ## Conversation Graph (LangGraph)
 
@@ -528,9 +583,12 @@ docker exec uiuc_bot-postgres-1 psql -U illiniguide -d postgres -c "CREATE DATAB
 DATABASE_URL="postgresql+asyncpg://illiniguide:change-me@localhost:5433/illiniguide_test" uv run alembic upgrade head
 ```
 
-**653/653 tests pass** (plus 11 documented `xfail` topic-classifier residuals, see
-`app/evaluation/topic_regression_set.py`). The handful of tests gated on a real Groq call skip
-themselves when `GROQ_API_KEY` isn't set, so the suite (and CI) stays green either way.
+**639 tests pass** (plus 30 documented `xfail` topic-classifier residuals from the Source Manifest
+V2 taxonomy migration, see `app/evaluation/topic_regression_set.py`). The handful of tests gated
+on a real Groq call skip themselves when `GROQ_API_KEY` isn't set, so the suite (and CI) stays
+green either way — with a real key configured, they instead make a genuine Groq API call and can
+fail on external conditions outside the code (a daily token-quota limit, a transient outage), same
+as any other live-integration test.
 
 ```bash
 cd frontend && npm run test      # Vitest + React Testing Library, jsdom environment

@@ -36,6 +36,11 @@ class RetrievedChunk:
     fused_score: float
     semantic_rank: int | None
     bm25_rank: int | None
+    # Section identity + full un-split section text, for the context builder to expand a chunk
+    # into when its section was split into multiple children (Source Manifest V2, Part 14) --
+    # None when the section fit in one chunk already (see DocumentChunk.parent_text).
+    section_index: int
+    parent_text: str | None
 
 
 class HybridRetriever:
@@ -220,6 +225,8 @@ class HybridRetriever:
                     fused_score=score,
                     semantic_rank=semantic_ranks.get(chunk_id),
                     bm25_rank=bm25_ranks.get(chunk_id),
+                    section_index=chunk.section_index,
+                    parent_text=chunk.parent_text,
                 )
             )
         return results

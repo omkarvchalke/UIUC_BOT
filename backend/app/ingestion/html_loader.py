@@ -253,8 +253,34 @@ def _extract_sections(soup: BeautifulSoup) -> tuple[Section, ...]:
                 heading_stack.append((level, heading_text))
             continue
 
+        if isinstance(node, Tag) and node.name == "table":
+            # Nested <table> (e.g. inside a <td> of an outer table already
+            # being formatted): its cell text is already captured, flattened,
+            # as part of the outer table's own cell text via get_text() in
+            # _extract_table_lines below -- formatting it a second time here
+            # would duplicate that content immediately after the outer row.
+            if node.find_parent("table") is not None:
+                continue
+            row_lines = _extract_table_lines(node)
+            if row_lines:
+                flush_line()
+                if current_lines:
+                    current_lines.append("")
+                for index, line in enumerate(row_lines):
+                    if index:
+                        current_lines.append("")
+                    current_lines.append(line)
+            continue
+
         if isinstance(node, NavigableString):
             if node.find_parent(_HEADING_TAGS) is not None:
+                continue
+            # Already captured, formatted, by _extract_table_lines when the
+            # walk reached this text node's <table> ancestor above -- taking
+            # it again here as a plain line would produce the unstructured
+            # cell-by-cell noise (Source Manifest V2, Part 13) this table
+            # handling exists to replace.
+            if node.find_parent("table") is not None:
                 continue
             text = str(node).strip()
             if not text:
@@ -267,6 +293,61 @@ def _extract_sections(soup: BeautifulSoup) -> tuple[Section, ...]:
 
     flush()
     return tuple(sections)
+
+
+def _extract_table_lines(table: Tag) -> list[str]:
+    """Formats a <table> into retrieval-friendly `label: header: value` lines
+    (Source Manifest V2, Part 13) instead of the unstructured, unlabeled
+    cell-by-cell text a plain get_text() walk would produce.
+
+    Convention: if the first row is a header row (uses <th> cells), column 0
+    of each data row is treated as that row's own label (no header prefix)
+    and columns 1+ are prefixed with their header cell's text -- e.g. an
+    "Applicant | Deadline" header with a "First-year applicants | November 1"
+    row becomes "First-year applicants: Deadline: November 1". Tables with no
+    <th> header row fall back to plain " | "-joined cells per row, since
+    there's no column label to attach.
+    """
+
+    def cell_text(cell: Tag) -> str:
+        return clean_text(cell.get_text(" ", strip=True))
+
+    # Only <tr>s belonging to *this* table, not a table nested inside one of
+    # its cells -- find_all("tr") is recursive and would otherwise pull in a
+    # nested table's rows too.
+    rows = [tr for tr in table.find_all("tr") if tr.find_parent("table") is table]
+    if not rows:
+        return []
+
+    # recursive=False on both cell lookups below: find_all is recursive by
+    # default, which -- for a cell containing a nested table -- would also
+    # pull in that nested table's own <th>/<td> cells as if they belonged to
+    # this row, duplicating their text (once flattened into this cell via
+    # cell_text's get_text(), once again as their own spurious cells here).
+    header_row = rows[0] if rows[0].find("th") is not None else None
+    headers = (
+        [cell_text(cell) for cell in header_row.find_all(("th", "td"), recursive=False)]
+        if header_row
+        else []
+    )
+    data_rows = rows[1:] if header_row else rows
+
+    lines: list[str] = []
+    for row in data_rows:
+        cells = [cell_text(cell) for cell in row.find_all(("th", "td"), recursive=False)]
+        if not any(cells):
+            continue
+        if len(headers) > 1 and cells:
+            labeled = [
+                f"{headers[i]}: {cells[i]}" if i < len(headers) and headers[i] else cells[i]
+                for i in range(1, len(cells))
+                if cells[i]
+            ]
+            lines.append(f"{cells[0]}: " + ", ".join(labeled) if labeled else cells[0])
+        else:
+            lines.append(" | ".join(cell for cell in cells if cell))
+
+    return lines
 
 
 def _extract_title(soup: BeautifulSoup) -> str | None:

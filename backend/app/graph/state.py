@@ -21,6 +21,11 @@ class RetrievedChunkState(TypedDict):
     subtopic: str | None
     fused_score: float
     rerank_score: NotRequired[float]
+    # See RetrievedChunk.section_index/parent_text (Source Manifest V2, Part 14) -- consumed by
+    # context_builder to expand a chunk to its full section text when one is available; never
+    # shown to the user, so CitationState below deliberately omits it.
+    section_index: int
+    parent_text: str | None
 
 
 class CitationState(TypedDict):
