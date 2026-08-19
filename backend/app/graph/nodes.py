@@ -11,6 +11,7 @@ from app.graph.dependencies import GraphDependencies
 from app.graph.generation import greeting_answer
 from app.graph.state import CitationState, GraphState, RetrievedChunkState
 from app.models.conversation_session import StudentType
+from app.models.document import Topic
 from app.retrieval.hybrid_search import RetrievedChunk
 
 logger = get_logger(__name__)
@@ -92,6 +93,26 @@ def _retrieval_query(state: GraphState) -> str:
     if reformulated:
         return reformulated
     return _effective_query(state)
+
+
+def _retrieval_queries(state: GraphState) -> list[str]:
+    """The list of queries retrieve() should search independently -- one
+    entry per search, merged after. A loop-back reformulated_query
+    (agentic retry, see route_after_sufficiency_check) always wins and
+    collapses back to single-query mode rather than re-decomposing: an
+    agentic-retry reformulation is already a targeted fix for a specific
+    shortfall, and re-splitting it would fight that targeting. Otherwise
+    uses sub_queries decompose_query set earlier this turn -- a length-1
+    list containing the original question by default (query decomposition
+    off, or a question that wasn't split), or genuinely independent
+    sub-questions when it was. Falls back to [_effective_query(state)]
+    defensively if sub_queries is somehow empty/unset (shouldn't happen:
+    decompose_query always sets a non-empty list, see its own docstring in
+    state.py)."""
+    reformulated = state.get("reformulated_query")
+    if reformulated:
+        return [reformulated]
+    return state.get("sub_queries") or [_effective_query(state)]
 
 
 def _to_chunk_state(
@@ -257,6 +278,28 @@ def make_clarification_node() -> Node:
     return clarification
 
 
+def make_decompose_query_node(deps: GraphDependencies) -> Node:
+    async def decompose_query(state: GraphState) -> dict[str, Any]:
+        settings = get_settings()
+        query = _effective_query(state)
+        sub_queries = await deps.query_decomposer.decompose(query)
+        # Defensive: NoOpQueryDecomposer/LlmQueryDecomposer both already
+        # respect query_decomposition_max_subqueries and never return an
+        # empty list, but the QueryDecomposer Protocol doesn't force every
+        # implementer to -- cheap insurance, and keeps the "always
+        # non-empty" invariant visible right where it's produced (see
+        # sub_queries' docstring in state.py).
+        sub_queries = sub_queries[: settings.query_decomposition_max_subqueries] or [query]
+        logger.info(
+            "graph_decompose_query",
+            session_id=state["session_id"],
+            sub_query_count=len(sub_queries),
+        )
+        return {"sub_queries": sub_queries}
+
+    return decompose_query
+
+
 def make_metadata_filter_node() -> Node:
     async def metadata_filter(state: GraphState) -> dict[str, Any]:
         # A named stage per the spec's graph, even though most of its job
@@ -300,97 +343,141 @@ def _distinct_document_count(results: list[RetrievedChunk]) -> int:
     return len({chunk.url for chunk in results})
 
 
+async def _search_with_fallbacks(
+    deps: GraphDependencies,
+    query: str,
+    *,
+    topic: Topic | None,
+    student_type: StudentType | None,
+) -> tuple[list[RetrievedChunk], bool, bool]:
+    """One query's worth of the topic/student_type filter-and-relax search
+    -- retrieve() calls this once per query (see _retrieval_queries),
+    merging every call's results before reranking, so a decomposed
+    compound question runs this independently for each sub-question.
+    Returns (results, topic_filter_applied, student_type_filter_applied).
+    """
+    settings = get_settings()
+    results: list[RetrievedChunk] = []
+    topic_filter_applied = False
+    if topic is not None:
+        results = await deps.hybrid_retriever.search(
+            query,
+            limit=settings.retrieval_candidate_limit,
+            topic=topic,
+            student_type=student_type,
+        )
+        topic_filter_applied = True
+
+    # Fallback case, and the reason topic isn't just always used as a
+    # hard filter: "How do I apply for OPT?" classifies as "admissions"
+    # (0.65 confidence, above the clarification threshold) purely from
+    # "apply"/"application" word overlap with the admissions topic
+    # description, and filtering retrieval to topic=admissions returns
+    # nothing -- while the same query with no topic filter ranks the
+    # real OPT page #1-2. A well-separated topic (e.g. ISSS/CPT) still
+    # gets the precision win of a narrowed candidate set; a
+    # misclassified one degrades to today's unfiltered behavior instead
+    # of a dead end.
+    #
+    # topic_filter_min_results (Settings, default 3): below this many
+    # topic-filtered *distinct documents*, treat the classifier's topic
+    # guess as more likely wrong than the corpus actually being that
+    # thin, and retry unfiltered rather than surface a false "nothing
+    # found." Chosen to be clearly below the reranker's input size
+    # (rerank_top_k, default 8, see rerank node) -- a genuinely
+    # on-topic query should comfortably clear this from a corpus with
+    # real per-topic coverage (see test_sources.py's per-topic
+    # coverage check).
+    if _distinct_document_count(results) < settings.topic_filter_min_results:
+        fallback_results = await deps.hybrid_retriever.search(
+            query, limit=settings.retrieval_candidate_limit, student_type=student_type
+        )
+        if _distinct_document_count(fallback_results) > _distinct_document_count(results):
+            results = fallback_results
+            topic_filter_applied = False
+
+    # student_type fallback, same relaxation pattern as topic above:
+    # a student's real situation doesn't always fit the single bucket
+    # the profile gate collects (freshman/transfer/graduate/
+    # international are treated as mutually exclusive, but a real
+    # person can be e.g. an international *graduate* student).
+    # Confirmed live: a session with student_type=graduate asking
+    # "How do I maintain my F-1 visa status?" got hard-filtered down to
+    # zero results, since every visa/OPT/CPT source is scoped to
+    # student_types=(INTERNATIONAL,) only -- content that's exactly
+    # right for this person, just filtered out by the other half of
+    # their profile. Below topic_filter_min_results even after the
+    # topic relaxation above, retry with no student_type filter at all
+    # rather than surface a false "nothing found" -- still passing
+    # through whatever topic filter state the step above settled on,
+    # so this only relaxes student_type, not both at once.
+    student_type_filter_applied = student_type is not None
+    if (
+        student_type is not None
+        and _distinct_document_count(results) < settings.topic_filter_min_results
+    ):
+        unfiltered_results = await deps.hybrid_retriever.search(
+            query,
+            limit=settings.retrieval_candidate_limit,
+            topic=topic if topic_filter_applied else None,
+        )
+        if _distinct_document_count(unfiltered_results) > _distinct_document_count(results):
+            results = unfiltered_results
+            student_type_filter_applied = False
+
+    return results, topic_filter_applied, student_type_filter_applied
+
+
 def make_retrieve_node(deps: GraphDependencies) -> Node:
     async def retrieve(state: GraphState) -> dict[str, Any]:
         settings = get_settings()
-        query = _retrieval_query(state)
+        queries = _retrieval_queries(state)
         topic = state.get("topic")
         student_type = state.get("student_type")
 
-        results: list[RetrievedChunk] = []
-        topic_filter_applied = False
-        if topic is not None:
-            results = await deps.hybrid_retriever.search(
-                query,
-                limit=settings.retrieval_candidate_limit,
-                topic=topic,
-                student_type=student_type,
+        # One chunk can legitimately be found by more than one sub-query
+        # when a compound question got decomposed -- keyed by chunk_id so
+        # duplicates collapse instead of showing up twice, keeping
+        # whichever search scored it higher (fused_score is user-visible
+        # via citations, so this isn't just an implementation detail).
+        merged: dict[str, RetrievedChunk] = {}
+        for query in queries:
+            results, topic_filter_applied, student_type_filter_applied = (
+                await _search_with_fallbacks(
+                    deps, query, topic=topic, student_type=student_type
+                )
             )
-            topic_filter_applied = True
-
-        # Fallback case, and the reason topic isn't just always used as a
-        # hard filter: "How do I apply for OPT?" classifies as "admissions"
-        # (0.65 confidence, above the clarification threshold) purely from
-        # "apply"/"application" word overlap with the admissions topic
-        # description, and filtering retrieval to topic=admissions returns
-        # nothing -- while the same query with no topic filter ranks the
-        # real OPT page #1-2. A well-separated topic (e.g. ISSS/CPT) still
-        # gets the precision win of a narrowed candidate set; a
-        # misclassified one degrades to today's unfiltered behavior instead
-        # of a dead end.
-        #
-        # topic_filter_min_results (Settings, default 3): below this many
-        # topic-filtered *distinct documents*, treat the classifier's topic
-        # guess as more likely wrong than the corpus actually being that
-        # thin, and retry unfiltered rather than surface a false "nothing
-        # found." Chosen to be clearly below the reranker's input size
-        # (rerank_top_k, default 8, see rerank node) -- a genuinely
-        # on-topic query should comfortably clear this from a corpus with
-        # real per-topic coverage (see test_sources.py's per-topic
-        # coverage check).
-        if _distinct_document_count(results) < settings.topic_filter_min_results:
-            fallback_results = await deps.hybrid_retriever.search(
-                query, limit=settings.retrieval_candidate_limit, student_type=student_type
+            logger.info(
+                "graph_retrieve",
+                session_id=state["session_id"],
+                # str(), not .value: topic came from state.get(), and on a
+                # turn that starts from a checkpoint restored from
+                # Postgres (see save_conversation_state below), it
+                # round-trips through JSON and comes back a plain str
+                # rather than a Topic instance. Topic is a StrEnum, so
+                # str() is correct either way -- .value crashes on the
+                # plain-str case.
+                topic=str(topic) if topic else None,
+                topic_filter_applied=topic_filter_applied,
+                student_type_filter_applied=student_type_filter_applied,
+                result_count=len(results),
             )
-            if _distinct_document_count(fallback_results) > _distinct_document_count(results):
-                results = fallback_results
-                topic_filter_applied = False
+            for chunk in results:
+                key = str(chunk.chunk_id)
+                existing = merged.get(key)
+                if existing is None or chunk.fused_score > existing.fused_score:
+                    merged[key] = chunk
 
-        # student_type fallback, same relaxation pattern as topic above:
-        # a student's real situation doesn't always fit the single bucket
-        # the profile gate collects (freshman/transfer/graduate/
-        # international are treated as mutually exclusive, but a real
-        # person can be e.g. an international *graduate* student).
-        # Confirmed live: a session with student_type=graduate asking
-        # "How do I maintain my F-1 visa status?" got hard-filtered down to
-        # zero results, since every visa/OPT/CPT source is scoped to
-        # student_types=(INTERNATIONAL,) only -- content that's exactly
-        # right for this person, just filtered out by the other half of
-        # their profile. Below topic_filter_min_results even after the
-        # topic relaxation above, retry with no student_type filter at all
-        # rather than surface a false "nothing found" -- still passing
-        # through whatever topic filter state the step above settled on,
-        # so this only relaxes student_type, not both at once.
-        student_type_filter_applied = student_type is not None
-        if (
-            student_type is not None
-            and _distinct_document_count(results) < settings.topic_filter_min_results
-        ):
-            unfiltered_results = await deps.hybrid_retriever.search(
-                query,
-                limit=settings.retrieval_candidate_limit,
-                topic=topic if topic_filter_applied else None,
-            )
-            if _distinct_document_count(unfiltered_results) > _distinct_document_count(results):
-                results = unfiltered_results
-                student_type_filter_applied = False
+        # Highest-scoring first, then cap at the same limit a single-query
+        # search would have used -- concatenating each sub-query's
+        # already-limited results in query order and slicing naively would
+        # systematically favor whichever sub-query happened to run first.
+        merged_results = sorted(merged.values(), key=lambda c: c.fused_score, reverse=True)[
+            : settings.retrieval_candidate_limit
+        ]
 
-        logger.info(
-            "graph_retrieve",
-            session_id=state["session_id"],
-            # str(), not .value: topic came from state.get(), and on a turn
-            # that starts from a checkpoint restored from Postgres (see
-            # save_conversation_state below), it round-trips through JSON
-            # and comes back a plain str rather than a Topic instance.
-            # Topic is a StrEnum, so str() is correct either way -- .value
-            # crashes on the plain-str case.
-            topic=str(topic) if topic else None,
-            topic_filter_applied=topic_filter_applied,
-            student_type_filter_applied=student_type_filter_applied,
-            result_count=len(results),
-        )
         return {
-            "retrieved_chunks": [_to_chunk_state(chunk) for chunk in results],
+            "retrieved_chunks": [_to_chunk_state(chunk) for chunk in merged_results],
             # Incremented on every entry, including loop-back re-entries
             # from route_after_sufficiency_check within the same turn --
             # metadata_filter reset this to 0 once at the start of the

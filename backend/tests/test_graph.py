@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.graph.dependencies import GraphDependencies
 from app.graph.generation import ExtractiveAnswerGenerator
 from app.graph.graph import build_graph, config_for, turn_input
+from app.graph.query_decomposition import NoOpQueryDecomposer
 from app.graph.retrieval_agent import AlwaysSufficientChecker, SufficiencyAssessment
 from app.graph.state import GraphState, RetrievedChunkState
 from app.ingestion.chunking import ChunkResult
@@ -33,6 +34,7 @@ def _build_deps(session: AsyncSession) -> GraphDependencies:
         reranker=CrossEncoderReranker(),
         answer_generator=ExtractiveAnswerGenerator(),
         retrieval_sufficiency_checker=AlwaysSufficientChecker(),
+        query_decomposer=NoOpQueryDecomposer(),
     )
 
 
@@ -637,3 +639,195 @@ async def test_agentic_retrieval_state_does_not_leak_into_a_later_turn(
     # to reflect only *this* turn's retrieve() calls, not accumulate
     # across turns.
     assert second["retrieval_attempt"] == 1
+
+
+class _StubQueryDecomposer:
+    """Returns a fixed, pre-determined list of sub-queries regardless of
+    the input question -- proves retrieve()'s fan-out/merge behavior
+    directly, without depending on a real LLM call's exact wording."""
+
+    def __init__(self, sub_queries: list[str]) -> None:
+        self._sub_queries = sub_queries
+
+    async def decompose(self, query: str) -> list[str]:
+        return self._sub_queries
+
+
+async def test_query_decomposition_fans_out_and_merges_results(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_checkpointer: AsyncPostgresSaver,
+) -> None:
+    """Proves retrieve() actually searches once per sub-query and merges
+    the results: two documents, each worded so only ONE of two stubbed
+    sub-queries would find it well, both end up cited -- a single combined
+    query wouldn't reliably surface both."""
+
+    class AlwaysHousingTopicClassifier:
+        def classify(self, message: str) -> TopicClassification:
+            return TopicClassification(topic=Topic.HOUSING, confidence=0.99)
+
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/meal-plans",
+            title="Meal Plans",
+            chunk_texts=["Meal plan options include Classic Meals and Dining Dollars for residents."],
+            topic=Topic.HOUSING,
+        )
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/roommate-matching",
+            title="Roommate Matching",
+            chunk_texts=["Roommate matching lets incoming residents request a specific roommate."],
+            topic=Topic.HOUSING,
+        )
+        deps = _build_deps(session)
+        deps.topic_classifier = AlwaysHousingTopicClassifier()  # type: ignore[assignment]
+        deps.query_decomposer = _StubQueryDecomposer(  # type: ignore[assignment]
+            ["What meal plan options are available to residents?", "How does roommate matching work?"]
+        )
+        graph = build_graph(deps, checkpointer=test_checkpointer)
+        session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
+
+        result = await graph.ainvoke(
+            turn_input(session_id, "Tell me about meal plans and roommate matching"),
+            config=config_for(session_id),
+        )
+
+    assert result["sub_queries"] == [
+        "What meal plan options are available to residents?",
+        "How does roommate matching work?",
+    ]
+    # Checking retrieved_chunks (retrieve's own merged output), not the
+    # final citations -- whether the extractive generator's own separate
+    # sentence-picking logic ends up citing every retrieved chunk is a
+    # different concern from whether retrieve() actually fanned out over
+    # both sub-queries and merged their results, which is what this test
+    # is about.
+    retrieved_urls = {chunk["url"] for chunk in result["retrieved_chunks"]}
+    assert "https://example.illinois.edu/meal-plans" in retrieved_urls
+    assert "https://example.illinois.edu/roommate-matching" in retrieved_urls
+
+
+async def test_agentic_retry_reformulation_collapses_to_single_query_not_redecomposed(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_checkpointer: AsyncPostgresSaver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Proves the two features compose correctly: on a retry, retrieve()
+    uses the sufficiency checker's reformulated_query alone -- not the
+    original decomposition's sub_queries again. A third document, worded
+    so only the reformulated query (not either original sub-query) would
+    find it, appears in citations only because the reformulation actually
+    took effect."""
+    monkeypatch.setattr(edges_module, "get_settings", lambda: Settings(agentic_retrieval_max_attempts=2))
+
+    class AlwaysHousingTopicClassifier:
+        def classify(self, message: str) -> TopicClassification:
+            return TopicClassification(topic=Topic.HOUSING, confidence=0.99)
+
+    class _InsufficientOnceWithReformulationChecker:
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        async def assess(
+            self, *, query: str, context: str, chunks: list[RetrievedChunkState]
+        ) -> SufficiencyAssessment:
+            self.call_count += 1
+            if self.call_count == 1:
+                return SufficiencyAssessment(
+                    sufficient=False,
+                    reformulated_query="What are the quiet study hours in residence halls?",
+                    reasoning="stub: first pass insufficient",
+                )
+            return SufficiencyAssessment(sufficient=True, reformulated_query=None, reasoning="stub: sufficient")
+
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/meal-plans",
+            title="Meal Plans",
+            chunk_texts=["Meal plan options include Classic Meals and Dining Dollars for residents."],
+            topic=Topic.HOUSING,
+        )
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/roommate-matching",
+            title="Roommate Matching",
+            chunk_texts=["Roommate matching lets incoming residents request a specific roommate."],
+            topic=Topic.HOUSING,
+        )
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/quiet-hours",
+            title="Quiet Study Hours",
+            chunk_texts=["Quiet study hours in residence halls run from 9pm to 9am on weeknights."],
+            topic=Topic.HOUSING,
+        )
+        deps = _build_deps(session)
+        deps.topic_classifier = AlwaysHousingTopicClassifier()  # type: ignore[assignment]
+        deps.query_decomposer = _StubQueryDecomposer(  # type: ignore[assignment]
+            ["What meal plan options are available to residents?", "How does roommate matching work?"]
+        )
+        checker = _InsufficientOnceWithReformulationChecker()
+        deps.retrieval_sufficiency_checker = checker  # type: ignore[assignment]
+        graph = build_graph(deps, checkpointer=test_checkpointer)
+        session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
+
+        result = await graph.ainvoke(
+            turn_input(session_id, "Tell me about meal plans and roommate matching"),
+            config=config_for(session_id),
+        )
+
+    assert checker.call_count == 2
+    assert result["retrieval_attempt"] == 2
+    citation_urls = {citation["url"] for citation in result["citations"]}
+    assert "https://example.illinois.edu/quiet-hours" in citation_urls
+
+
+async def test_sub_queries_reflects_only_the_current_turns_decomposition(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    test_checkpointer: AsyncPostgresSaver,
+) -> None:
+    """decompose_query sits unconditionally upstream of every path into
+    metadata_filter/retrieve and runs exactly once per turn, so
+    sub_queries needs no explicit per-turn reset the way reformulated_query/
+    retrieval_attempt do -- but that's a claim worth a test, not just a
+    docstring. A second turn with a decomposer returning a *different*
+    split must not see the first turn's sub_queries."""
+
+    class _SequencedQueryDecomposer:
+        def __init__(self, responses: list[list[str]]) -> None:
+            self._responses = responses
+            self.call_count = 0
+
+        async def decompose(self, query: str) -> list[str]:
+            response = self._responses[self.call_count]
+            self.call_count += 1
+            return response
+
+    async with db_session_factory() as session:
+        await _seed_and_index(
+            session,
+            url="https://example.illinois.edu/dining",
+            title="Meal Plans",
+            chunk_texts=["Meal plan options include Classic Meals and Dining Dollars for residents."],
+            topic=Topic.DINING,
+        )
+        deps = _build_deps(session)
+        decomposer = _SequencedQueryDecomposer(
+            responses=[
+                ["What meal plan options exist?", "How does roommate matching work?"],
+                ["What meal plan options exist?"],
+            ]
+        )
+        deps.query_decomposer = decomposer  # type: ignore[assignment]
+        graph = build_graph(deps, checkpointer=test_checkpointer)
+        session_id = await _create_session(session, student_type=StudentType.FRESHMAN)
+        config = config_for(session_id)
+
+        first = await graph.ainvoke(turn_input(session_id, "meal plans and roommates"), config=config)
+        second = await graph.ainvoke(turn_input(session_id, "meal plans"), config=config)
+
+    assert first["sub_queries"] == ["What meal plan options exist?", "How does roommate matching work?"]
+    assert second["sub_queries"] == ["What meal plan options exist?"]

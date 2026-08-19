@@ -10,9 +10,11 @@ from app.database.session import get_db_session
 from app.graph.dependencies import GraphDependencies
 from app.graph.generation import AnswerGenerator, ExtractiveAnswerGenerator
 from app.graph.graph import build_graph
+from app.graph.query_decomposition import NoOpQueryDecomposer, QueryDecomposer
 from app.graph.retrieval_agent import AlwaysSufficientChecker, RetrievalSufficiencyChecker
 from app.graph.state import GraphState
 from app.llm.groq_answer_generator import GroqAnswerGenerator
+from app.llm.query_decomposition import LlmQueryDecomposer
 from app.llm.retrieval_agent import LlmRetrievalSufficiencyChecker
 from app.repositories.chat_turn_event_repository import ChatTurnEventRepository
 from app.repositories.document_repository import DocumentRepository
@@ -152,11 +154,25 @@ RetrievalSufficiencyCheckerDep = Annotated[
 ]
 
 
+def get_query_decomposer() -> QueryDecomposer:
+    # Same opt-in-plus-key requirement as get_retrieval_sufficiency_checker
+    # above, but its own independent flag -- query decomposition and
+    # agentic retrieval are separately toggleable.
+    settings = get_settings()
+    if settings.query_decomposition_enabled and settings.groq_api_key:
+        return LlmQueryDecomposer()
+    return NoOpQueryDecomposer()
+
+
+QueryDecomposerDep = Annotated[QueryDecomposer, Depends(get_query_decomposer)]
+
+
 def get_graph_dependencies(
     session_service: SessionServiceDep,
     hybrid_retriever: HybridRetrieverDep,
     answer_generator: AnswerGeneratorDep,
     retrieval_sufficiency_checker: RetrievalSufficiencyCheckerDep,
+    query_decomposer: QueryDecomposerDep,
 ) -> GraphDependencies:
     settings = get_settings()
     return GraphDependencies(
@@ -168,6 +184,7 @@ def get_graph_dependencies(
         reranker=CrossEncoderReranker(),
         answer_generator=answer_generator,
         retrieval_sufficiency_checker=retrieval_sufficiency_checker,
+        query_decomposer=query_decomposer,
     )
 
 

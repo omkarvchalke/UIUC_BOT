@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.graph.generation import AnswerGenerator
+from app.graph.query_decomposition import QueryDecomposer
 from app.graph.retrieval_agent import RetrievalSufficiencyChecker
 from app.retrieval.hybrid_search import HybridRetriever
 from app.retrieval.reranker import CrossEncoderReranker
@@ -20,3 +21,4 @@ class GraphDependencies:
     reranker: CrossEncoderReranker
     answer_generator: AnswerGenerator
     retrieval_sufficiency_checker: RetrievalSufficiencyChecker
+    query_decomposer: QueryDecomposer

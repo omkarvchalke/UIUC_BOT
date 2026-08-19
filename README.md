@@ -324,6 +324,32 @@ and `app/graph/graph.py`.
   (empty `GroqError`, malformed JSON, a missing required field) as `sufficient=True` — it can
   make retrieval smarter, but a failure here never breaks or hangs the default experience.
 
+### Query Decomposition
+
+Opt-in (`QUERY_DECOMPOSITION_ENABLED=true`, plus a real `GROQ_API_KEY`), independent of the
+agentic retrieval loop above and of `GROQ_GENERATION_ENABLED`: a new `decompose_query` node
+(`app/graph/nodes.py`), spliced between `question_classification` and `metadata_filter`, asks an
+LLM whether the question has genuinely distinct parts needing separate searches (e.g. "What's the
+difference between OPT and CPT, and which should I use if I want to work during the semester?").
+When it does, `retrieve` fans out — one `hybrid_retriever.search()` call per sub-question — and
+merges the results (deduped by `chunk_id`, keeping the higher `fused_score` on a collision, sorted
+and capped at `retrieval_candidate_limit`) before the normal single rerank/generate pass. A single
+focused question is returned unchanged as a one-item list — the default, no-op case.
+
+- **Composes with the agentic retrieval loop**: an agentic-retry reformulation always wins over
+  the original sub-questions on a retry (`_retrieval_queries` in `app/graph/nodes.py`) rather than
+  re-decomposing — a reformulation is already a targeted fix for a specific shortfall.
+- **Fails open**: `NoOpQueryDecomposer` (`app/graph/query_decomposition.py`) is the default when
+  the feature is off — always returns the original question as a single-item list, no Groq call.
+  `LlmQueryDecomposer` (`app/llm/query_decomposition.py`) fails open the same way on any degraded
+  case (`GroqError`, malformed JSON, an empty/non-list `sub_queries`).
+- **Known scope boundary, not an oversight**: reranking still scores every merged candidate
+  against the single original (compound) question, not per-sub-question — tracking per-chunk
+  sub-query provenance for "true" per-chunk scoring is a real but separate follow-up. Likewise,
+  one topic classification of the original question gates every sub-query's search (relying on
+  the existing per-search topic-fallback safety net if that shared topic is wrong for one part),
+  rather than re-classifying each sub-question independently.
+
 ## Groq Integration and Prompt Engineering
 
 `app/api/dependencies.py::get_answer_generator()` picks the real `GroqAnswerGenerator`
@@ -502,7 +528,7 @@ docker exec uiuc_bot-postgres-1 psql -U illiniguide -d postgres -c "CREATE DATAB
 DATABASE_URL="postgresql+asyncpg://illiniguide:change-me@localhost:5433/illiniguide_test" uv run alembic upgrade head
 ```
 
-**631/631 tests pass** (plus 11 documented `xfail` topic-classifier residuals, see
+**653/653 tests pass** (plus 11 documented `xfail` topic-classifier residuals, see
 `app/evaluation/topic_regression_set.py`). The handful of tests gated on a real Groq call skip
 themselves when `GROQ_API_KEY` isn't set, so the suite (and CI) stays green either way.
 

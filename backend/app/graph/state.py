@@ -80,6 +80,20 @@ class GraphState(TypedDict):
     reranked_chunks: NotRequired[list[RetrievedChunkState]]
     context: NotRequired[str]
 
+    # Set once per turn by decompose_query (runs unconditionally between
+    # question_classification and metadata_filter -- see graph.py), before
+    # the retrieve<->assess_retrieval_sufficiency cycle below can begin.
+    # Always a non-empty list: the original question as a single-item list
+    # when query decomposition is off/NoOpQueryDecomposer, or 2-3
+    # independent sub-questions when it split a genuinely compound one.
+    # Unlike reformulated_query/retrieval_attempt below, this needs no
+    # separate per-turn reset in metadata_filter -- decompose_query is the
+    # sole node on every path into metadata_filter and always overwrites
+    # this fresh each turn, same "no reset needed" reasoning
+    # retrieval_sufficient's own comment below describes. See
+    # _retrieval_queries in nodes.py.
+    sub_queries: NotRequired[list[str]]
+
     # Agentic retrieval loop (assess_retrieval_sufficiency <-> retrieve,
     # see app/graph/edges.py::route_after_sufficiency_check). Deliberately
     # separate from query_override above, not reused: query_override

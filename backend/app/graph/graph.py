@@ -29,7 +29,7 @@ def _add_node(builder: _StateBuilder, name: str, node: nodes.Node) -> None:
     # our `Node` Callable type alias -- structurally correct at runtime
     # (verified: every node below runs and is exercised by tests), so this
     # centralizes one suppression instead of repeating type: ignore at each
-    # of the 13 add_node call sites.
+    # of the 14 add_node call sites.
     builder.add_node(name, node)  # type: ignore[call-overload]
 
 
@@ -42,19 +42,24 @@ def build_graph(
     Check Student Profile -> Intent Detection -> Question Classification ->
     Metadata Filter -> Retriever -> Hybrid Search -> Re-ranker -> Context
     Builder -> Generate Response -> Citation Generator -> Save Conversation
-    State) with three deliberate deviations, each explained where it's
+    State) with four deliberate deviations, each explained where it's
     built: "Retriever" and "Hybrid Search" are merged into one `retrieve`
     node (Phase 4's HybridRetriever already performs both as one operation),
     a `clarification` node is added (not in the spec's literal list, but
     implied by "the chatbot may ask about student type" and required for
     genuine conditional routing rather than a single straight-line path),
-    and an `assess_retrieval_sufficiency` node sits between context_builder
+    an `assess_retrieval_sufficiency` node sits between context_builder
     and generate_response with a conditional edge back to `retrieve` --
     the graph's first (and only) cycle, gated by
     Settings.agentic_retrieval_enabled and always bounded by
     Settings.agentic_retrieval_max_attempts (see
     edges.route_after_sufficiency_check), never relying on LangGraph's
-    recursion_limit as the actual termination mechanism.
+    recursion_limit as the actual termination mechanism -- and a
+    `decompose_query` node sits between question_classification and
+    metadata_filter, splitting a genuinely multi-part question into
+    independent sub-queries `retrieve` fans out over and merges (gated by
+    Settings.query_decomposition_enabled, always a no-op single-item list
+    when off).
     """
     builder: _StateBuilder = StateGraph(GraphState)
 
@@ -63,6 +68,7 @@ def build_graph(
     _add_node(builder, "intent_detection", nodes.make_intent_detection_node())
     _add_node(builder, "question_classification", nodes.make_question_classification_node(deps))
     _add_node(builder, "clarification", nodes.make_clarification_node())
+    _add_node(builder, "decompose_query", nodes.make_decompose_query_node(deps))
     _add_node(builder, "metadata_filter", nodes.make_metadata_filter_node())
     _add_node(builder, "retrieve", nodes.make_retrieve_node(deps))
     _add_node(builder, "re_ranker", nodes.make_reranker_node(deps))
@@ -91,9 +97,10 @@ def build_graph(
     builder.add_conditional_edges(
         "question_classification",
         edges.route_after_classification,
-        {"clarify": "clarification", "continue": "metadata_filter"},
+        {"clarify": "clarification", "continue": "decompose_query"},
     )
     builder.add_edge("clarification", "save_conversation_state")
+    builder.add_edge("decompose_query", "metadata_filter")
     builder.add_edge("metadata_filter", "retrieve")
     builder.add_edge("retrieve", "re_ranker")
     builder.add_edge("re_ranker", "context_builder")

@@ -83,6 +83,19 @@ class Settings(BaseSettings):
     agentic_retrieval_temperature: float = 0.0
     agentic_retrieval_max_completion_tokens: int = 512
 
+    # Query decomposition: an LLM splits a genuinely multi-part question
+    # into 2-3 focused sub-questions, each retrieved independently and
+    # merged before reranking (app/graph/query_decomposition.py,
+    # app/llm/query_decomposition.py). Off by default -- NoOpQueryDecomposer
+    # is used instead, which never calls Groq and always returns the
+    # original question as a single-item list, so retrieve() runs its
+    # existing single-query search unchanged. Deliberately independent of
+    # agentic_retrieval_enabled: either can run without the other.
+    query_decomposition_enabled: bool = False
+    query_decomposition_max_subqueries: int = 3
+    query_decomposition_temperature: float = 0.0
+    query_decomposition_max_completion_tokens: int = 512
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
