@@ -210,6 +210,23 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
     Topic.ACADEMIC_ADVISING: (
         "the paperwork to officially declare or switch your major within LAS",
     ),
+    # CAMPUS_RECREATION's plain description ("gym, pool, fitness facilities, recreation center
+    # membership, ...") already covers "membership" and "recreation center" as concepts, but
+    # scored 0.544 for a real live query phrased as "membership to the ARC" -- STUDENT_
+    # ORGANIZATIONS_ENGAGEMENT's much shorter, more generic description ("student clubs and
+    # registered student organizations") scored higher (0.617) on the same query purely from
+    # embedding-similarity noise, since neither topic has any exemplars and the description
+    # alone doesn't anchor "ARC" (the Activities & Recreation Center's actual, commonly-used
+    # name) to "membership" as one concrete phrase. Confirmed live: retrieval then filtered to
+    # the (wrong) student-orgs topic, which has enough of its own documents to clear
+    # topic_filter_min_results without ever relaxing, and none of them scored above
+    # min_rerank_score -- "I couldn't find anything" for a question the corpus actually answers
+    # (campusrec.illinois.edu/membership, campusrec.illinois.edu/facilities). One exemplar
+    # anchoring the real phrasing, not a description rewrite -- narrower risk of diluting other
+    # topics per this file's own established exemplar-over-description-edit convention.
+    Topic.CAMPUS_RECREATION: (
+        "getting a membership to the ARC or another recreation facility",
+    ),
     Topic.ACADEMICS: (
         "using the course explorer tool to plan out your class schedule",
         "how many times you're allowed to retake a class you previously failed",

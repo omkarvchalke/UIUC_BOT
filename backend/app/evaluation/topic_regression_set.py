@@ -581,6 +581,12 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         Topic.CAMPUS_RECREATION,
     ),
     TopicCase("Does the ARC have a rock climbing wall?", Topic.CAMPUS_RECREATION),
+    # Real live failure (confirmed via /api/v1/chat): classified as
+    # STUDENT_ORGANIZATIONS_ENGAGEMENT (0.617) over CAMPUS_RECREATION (0.544) before the
+    # dedicated exemplar above was added -- retrieval then filtered to a full page of wrong-topic
+    # chunks, all scoring below min_rerank_score, producing a false "couldn't find anything" for
+    # a question the corpus actually answers.
+    TopicCase("How do I get a membership to the ARC?", Topic.CAMPUS_RECREATION),
     TopicCase("How do I register a new student organization?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
     TopicCase("How many student organizations are there at UIUC?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
     TopicCase("How do I join a student club?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
