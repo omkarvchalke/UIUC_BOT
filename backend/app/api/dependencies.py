@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.database.session import get_db_session
 from app.graph.dependencies import GraphDependencies
 from app.graph.generation import AnswerGenerator, ExtractiveAnswerGenerator
+from app.graph.generation_router import RoutingAnswerGenerator
 from app.graph.graph import build_graph
 from app.graph.query_decomposition import NoOpQueryDecomposer, QueryDecomposer
 from app.graph.retrieval_agent import AlwaysSufficientChecker, RetrievalSufficiencyChecker
@@ -118,6 +119,25 @@ HybridRetrieverDep = Annotated[HybridRetriever, Depends(get_hybrid_retriever)]
 
 async def get_answer_generator(db: DbSession) -> AnswerGenerator:
     settings = get_settings()
+    # Looks up the tuned min_rerank_score (scripts/tune_retrieval_params.py)
+    # fresh on every request, same as get_settings() being called fresh per
+    # request elsewhere in this module -- a tuning-job commit takes effect
+    # on the very next request, no restart, no cache-bust. Built up front:
+    # every branch below either returns this directly or wraps it.
+    tuned_value = await RetrievalTuningRepository(db).get("min_rerank_score")
+    extractive = (
+        ExtractiveAnswerGenerator(min_rerank_score=tuned_value)
+        if tuned_value is not None
+        else ExtractiveAnswerGenerator()
+    )
+    # Checked first, deliberately: this is the per-query router (extractive stays the default,
+    # Groq only for queries that need real synthesis -- app/graph/generation_router.py), a strict
+    # improvement over groq_generation_enabled's all-or-nothing switch below. Both an explicit
+    # opt-in AND a real key are required, same reasoning as groq_generation_enabled -- a key alone
+    # (e.g. configured only to power the agentic retrieval loop below) must not silently change
+    # generation behavior.
+    if settings.generative_synthesis_enabled and settings.groq_api_key:
+        return RoutingAnswerGenerator(extractive=extractive, groq=GroqAnswerGenerator())
     # Both an explicit opt-in AND a real key are required -- a key alone
     # (e.g. configured only to power the agentic retrieval loop below)
     # must not silently switch generation off the deterministic extractive
@@ -125,14 +145,7 @@ async def get_answer_generator(db: DbSession) -> AnswerGenerator:
     # dev and tests work without a real credential.
     if settings.groq_generation_enabled and settings.groq_api_key:
         return GroqAnswerGenerator()
-    # Looks up the tuned min_rerank_score (scripts/tune_retrieval_params.py)
-    # fresh on every request, same as get_settings() being called fresh per
-    # request elsewhere in this module -- a tuning-job commit takes effect
-    # on the very next request, no restart, no cache-bust.
-    tuned_value = await RetrievalTuningRepository(db).get("min_rerank_score")
-    if tuned_value is not None:
-        return ExtractiveAnswerGenerator(min_rerank_score=tuned_value)
-    return ExtractiveAnswerGenerator()
+    return extractive
 
 
 AnswerGeneratorDep = Annotated[AnswerGenerator, Depends(get_answer_generator)]

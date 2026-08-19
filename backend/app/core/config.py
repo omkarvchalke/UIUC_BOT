@@ -63,6 +63,18 @@ class Settings(BaseSettings):
     # Requires both this flag and a real key.
     groq_generation_enabled: bool = False
 
+    # Per-query generative-synthesis routing: unlike groq_generation_enabled above (all-or-
+    # nothing, replaces ExtractiveAnswerGenerator globally), this keeps extractive as the default
+    # for every query and escalates to Groq only for the specific ones that need it -- no single
+    # picked sentence answers the question (nothing cleared the rerank floor), a comparison/
+    # aggregation query structurally can't be answered by picking one sentence per chunk, or the
+    # answer is split across multiple sentences/chunks that no single pick covers alone. See
+    # app/graph/generation_router.py. Off by default; requires both this flag and a real key, same
+    # convention as groq_generation_enabled. The two flags are mutually exclusive in practice
+    # (get_answer_generator checks this one first) but not enforced as such -- turning both on
+    # just means this one wins.
+    generative_synthesis_enabled: bool = False
+
     # Agentic retrieval: an LLM judges whether retrieved context is
     # sufficient to answer the question before generation runs, and if
     # not, reformulates the query and retries retrieval
