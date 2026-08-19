@@ -82,4 +82,40 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Documentation Requirements - DRES",
     ),
+    # Closes a real content-coverage gap: a live audit found "How do I request an interpreter for
+    # a lecture?" scoring below the rerank floor against the two DRES sources above (apply/
+    # documentation-requirements are about registering for accommodations generally, not
+    # interpreting specifically).
+    SourceConfig(
+        url="https://dres.illinois.edu/accommodations/interpreting-and-live-captioning/",
+        department="Disability Resources and Educational Services",
+        topic=Topic.ACCESSIBILITY_DISABILITY_SUPPORT,
+        source_type=SourceType.HTML,
+        fallback_title="Interpreting and Live Captioning - DRES",
+    ),
+    # Closes a real content-coverage gap: a live audit found "What should I do if I lose my
+    # wallet on campus?" scoring below the rerank floor -- the existing police.illinois.edu
+    # sources cover general safety tips and contact info, not lost-and-found specifically.
+    SourceConfig(
+        url="https://police.illinois.edu/services/lost-and-found-property/",
+        department="Division of Public Safety",
+        topic=Topic.CAMPUS_SAFETY,
+        source_type=SourceType.HTML,
+        fallback_title="Lost and Found Property",
+    ),
+    # Closes a real content-coverage gap: a live audit found "What's the process for a welfare
+    # check on a friend?" scoring below the rerank floor -- no existing source covers this at
+    # all. The Office of the Dean of Students' Community of Care referral is the actual UIUC
+    # process for reporting a concern about another student's wellbeing (not a police report
+    # unless there's an immediate emergency, which this page itself explains). Not a full crawl
+    # seed for odos.illinois.edu -- this is the one page a content-coverage audit specifically
+    # found missing, same "one targeted page, not a whole-domain crawl" pattern as the career_
+    # employment.py/graduation_records.py additions from the same audit.
+    SourceConfig(
+        url="https://odos.illinois.edu/community-of-care/referral",
+        department="Office of the Dean of Students",
+        topic=Topic.CAMPUS_SAFETY,
+        source_type=SourceType.HTML,
+        fallback_title="Refer a Student - Community of Care",
+    ),
 )

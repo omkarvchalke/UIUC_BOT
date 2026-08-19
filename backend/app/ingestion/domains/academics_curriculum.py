@@ -31,6 +31,16 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Course Catalog",
     ),
+    # Same CAMPUS_SERVICES_FACILITIES reasoning as the catalog root above -- crawler-discovered
+    # but landed under ADMISSIONS, dead-ending "How do I find out what gen-eds I still need?"
+    # despite this being the actual gen-ed requirements page.
+    SourceConfig(
+        url="https://catalog.illinois.edu/general-information/degree-general-education-requirements",
+        department="Office of the Provost",
+        topic=Topic.CAMPUS_SERVICES_FACILITIES,
+        source_type=SourceType.HTML,
+        fallback_title="Degree and General Education Requirements",
+    ),
     # A live run found "how do I contact my academic advisor" got zero
     # citations and was misclassified as academic_calendar -- UIUC advising
     # is decentralized per-college with no single university-wide advising
@@ -65,5 +75,17 @@ SOURCES: tuple[SourceConfig, ...] = (
         topic=Topic.ACADEMIC_ADVISING,
         source_type=SourceType.HTML,
         fallback_title="Advising (Student Success @ Illinois)",
+    ),
+    # Closes a real content-coverage gap: a live audit found "What's the difference between a
+    # major and a minor?" scoring below the rerank floor against every existing source. This page
+    # directly explains what a minor is (credit-hour requirements, declaring one) in contrast to a
+    # major -- same Grainger-advising-as-concrete-example reasoning as the source above (UIUC
+    # advising is decentralized, no single university-wide "majors vs minors" page exists).
+    SourceConfig(
+        url="https://advising.grainger.illinois.edu/degree-programs/minors",
+        department="The Grainger College of Engineering",
+        topic=Topic.ACADEMIC_ADVISING,
+        source_type=SourceType.HTML,
+        fallback_title="Minors (The Grainger College of Engineering)",
     ),
 )

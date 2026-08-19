@@ -193,11 +193,29 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         "checking the current status of your financial aid award",
         "whether international students are eligible for any financial aid",
         "the deadline to submit a scholarship application",
+        # Confirmed live (content-coverage audit): "How do payment plans work?" landed on HOUSING
+        # instead, which has enough of its own documents to dodge relaxation, even though real
+        # content (the University Bursar's own UI-Pay Payment Plan FAQ pages) scores well above
+        # the rerank floor once actually searched under this topic. Two earlier drafts each
+        # shared enough generic financial vocabulary to pull an unrelated query away from its own
+        # topic -- "...tuition and installment billing..." won "How do dining dollars roll over
+        # between semesters?" and "Are there refund options for overpayment?" (the latter is
+        # exactly FINANCIAL_AID_COSTS's own territory); "...spread tuition across several
+        # payments..." still won "Can I have more than one on-campus job at a time?" from
+        # CAREER_EMPLOYMENT. Narrowing to the plan's actual proper name, with no generic
+        # "tuition"/"billing"/"payments" wording left to bleed into those, landed clean against
+        # all three collisions.
+        "enrolling in the university's UI-Pay Payment Plan",
     ),
     Topic.HOUSING: (
         "packing and moving into your dorm room for the first time",
         "single-occupancy dorm rooms and the extra fee for a private room",
         "getting released from your dorm residency agreement",
+        # Confirmed live (content-coverage audit): "Where do I pick up a package that got
+        # delivered to campus?" landed on TECHNOLOGY_SERVICES instead, even though the real
+        # content (housing.illinois.edu/myhousing/mail-packages) scores well above the rerank
+        # floor once actually searched under this topic.
+        "picking up a package or mail delivered to your residence hall",
     ),
     # No exemplars existed for either topic below before -- both relied solely on their plain
     # descriptions. Confirmed live (150-question sweep, round 2): both queries dead-ended the same
@@ -313,6 +331,11 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         # embedding-similarity approach can't always disambiguate -- documented as a residual in
         # topic_regression_set.py rather than chased further.
         "what the add/drop deadline is",
+        # Confirmed live (content-coverage audit): "How do I order my cap and gown?" landed on
+        # INTERNATIONAL_STUDENTS_IMMIGRATION instead, even though the real content
+        # (commencement.illinois.edu/caps-and-gowns) scores well above the rerank floor once
+        # actually searched under this topic.
+        "ordering your cap and gown for the commencement ceremony",
     ),
     # Regressed for the same reason as CAMPUS_SERVICES_FACILITIES's other content diluting
     # this topic's course-catalog wording (see topic_classifier.py's comment on that topic's
@@ -372,6 +395,14 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         # university offer peer tutoring?" all started losing to CAREER_EMPLOYMENT once those
         # exemplars were added). Reverted as net-negative rather than kept -- see
         # topic_regression_set.py for the resulting documented residuals.
+        # Confirmed live (content-coverage audit): "How do I network with recruiters before a
+        # career fair?" landed on STUDENT_ORGANIZATIONS_ENGAGEMENT instead, even though the real
+        # content (careercenter.illinois.edu/home/career-fair-prep) scores well above the rerank
+        # floor once actually searched under this topic. Narrower than the four reverted
+        # exemplars above -- anchored to "career fair" specifically rather than general
+        # job-search/employment vocabulary, so it doesn't reopen that same over-broad-attractor
+        # failure mode.
+        "preparing to network with employers before a career fair",
     ),
     Topic.ORIENTATION_NEW_STUDENTS: (
         "is attending Welcome Week mandatory before you can pick your classes",

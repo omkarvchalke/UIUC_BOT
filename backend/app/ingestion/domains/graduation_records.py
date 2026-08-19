@@ -41,6 +41,17 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Illinois Commencement",
     ),
+    # Crawler-discovered but landed under ADMISSIONS (a live content-coverage audit found
+    # "How do I order my cap and gown?" dead-ending despite this page existing with strong,
+    # on-topic content) -- pinned here explicitly so it stays correctly tagged regardless of
+    # what the crawler's classifier does with it on a future crawl.
+    SourceConfig(
+        url="https://commencement.illinois.edu/caps-and-gowns",
+        department="Office of the Registrar",
+        topic=Topic.ACADEMIC_CALENDAR_GRADUATION,
+        source_type=SourceType.HTML,
+        fallback_title="Caps and Gowns",
+    ),
     # CAMPUS_SERVICES_FACILITIES, not FINANCIAL_AID_SCHOLARSHIPS: the previous taxonomy's
     # FINANCIAL_AID topic explicitly named "buying textbooks" in its description specifically to
     # fix a real regression ("Where do I buy textbooks?" was scoring below threshold without

@@ -47,6 +47,15 @@ def test_expected_entry_counts() -> None:
     # international_services.py and academics_curriculum.py. 76 -> 78: two
     # anchor sources added for the Source Manifest V2 migration's brand-new
     # ACADEMICS/FINANCIAL_AID_COSTS topics -- see registration_records.py
-    # and financial_aid_billing.py.
+    # and financial_aid_billing.py. 78 -> 87: 9 sources added closing real
+    # content-coverage gaps found by a live audit -- 3 were crawler-
+    # discovered pages that had landed under the wrong topic (caps-and-
+    # gowns, career-fair-prep, the gen-ed catalog page) pinned to their
+    # correct topic as explicit sources; 6 were genuinely new pages
+    # (Credit/No Credit, Student Code 3-110 academic standing, DRES
+    # interpreting/live captioning, police lost-and-found, the ODOS
+    # Community of Care referral, and the Grainger minors page) -- see
+    # graduation_records.py, career_employment.py, academics_curriculum.py,
+    # registration_records.py, and safety_emergency.py.
     assert len(domains.ALL_SEEDS) == 35
-    assert len(domains.ALL_SOURCES) == 78
+    assert len(domains.ALL_SOURCES) == 87

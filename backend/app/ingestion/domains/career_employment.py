@@ -64,4 +64,15 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Job Search",
     ),
+    # Crawler-discovered but landed under ADMISSIONS (a live content-coverage audit found "How do
+    # I network with recruiters before a career fair?" dead-ending despite this page existing
+    # with strong, on-topic content) -- pinned here explicitly, same reasoning as the three
+    # sources above.
+    SourceConfig(
+        url="https://careercenter.illinois.edu/home/career-fair-prep",
+        department="The Career Center",
+        topic=Topic.CAREER_EMPLOYMENT,
+        source_type=SourceType.HTML,
+        fallback_title="Career Fair Prep",
+    ),
 )

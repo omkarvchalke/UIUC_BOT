@@ -250,6 +250,9 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         "What's the earliest I can move into the dorms before classes start?",
         Topic.HOUSING,
     ),
+    TopicCase(
+        "Where do I pick up a package that got delivered to campus?", Topic.HOUSING
+    ),
     TopicCase("What meal plans are available?", Topic.DINING),
     TopicCase("What is the difference between Classic Meals and Dining Dollars?", Topic.DINING),
     TopicCase("Are there vegetarian options in the dining halls?", Topic.DINING),
@@ -306,6 +309,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     # (FINANCIAL_AID_SCHOLARSHIPS), so "loses to SCHOLARSHIPS" is no longer a possible outcome.
     TopicCase("How do I check my financial aid award status?", Topic.FINANCIAL_AID_SCHOLARSHIPS),
     TopicCase("Are there payment plans for tuition?", Topic.FINANCIAL_AID_SCHOLARSHIPS),
+    TopicCase("How do payment plans work?", Topic.FINANCIAL_AID_SCHOLARSHIPS),
     TopicCase("What's a Pell Grant?", Topic.FINANCIAL_AID_SCHOLARSHIPS),
     # Fixed live (now scores FINANCIAL_AID_SCHOLARSHIPS 0.887 outright) even though
     # INTERNATIONAL_STUDENTS_IMMIGRATION (the old competitor's merged successor topic) is still a
@@ -643,6 +647,7 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("What's the last day of finals week?", Topic.ACADEMIC_CALENDAR_GRADUATION),
     TopicCase("Is there a reading day before finals?", Topic.ACADEMIC_CALENDAR_GRADUATION),
     TopicCase("When do grades get posted after finals?", Topic.ACADEMIC_CALENDAR_GRADUATION),
+    TopicCase("How do I order my cap and gown?", Topic.ACADEMIC_CALENDAR_GRADUATION),
     TopicCase("How do I register for classes?", Topic.REGISTRATION_RECORDS),
     TopicCase("Where can I find the course catalog?", Topic.CAMPUS_SERVICES_FACILITIES),
     TopicCase("How do I drop a class?", Topic.REGISTRATION_RECORDS),
@@ -716,6 +721,9 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase(
         "How do I sign up for on-campus recruiting through the Career Center?",
         Topic.CAREER_EMPLOYMENT,
+    ),
+    TopicCase(
+        "How do I network with recruiters before a career fair?", Topic.CAREER_EMPLOYMENT
     ),
     TopicCase("How do I contact my academic advisor?", Topic.ACADEMIC_ADVISING),
     TopicCase("Where is the academic advising office?", Topic.ACADEMIC_ADVISING),

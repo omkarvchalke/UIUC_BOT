@@ -72,4 +72,28 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Course Explorer",
     ),
+    # Closes a real content-coverage gap: a live audit found "How do I switch from letter grade
+    # to pass/fail?" scoring below the rerank floor against every existing REGISTRATION_RECORDS
+    # document -- none of them (registration/, how-to-register/, transcripts/) actually cover the
+    # Credit/No Credit grading option, which is a distinct registrar process with its own page.
+    SourceConfig(
+        url="https://registrar.illinois.edu/registration/registration-process/credit-no-credit/",
+        department="Office of the Registrar",
+        topic=Topic.REGISTRATION_RECORDS,
+        source_type=SourceType.HTML,
+        fallback_title="Credit/No Credit",
+    ),
+    # Closes a real content-coverage gap: a live audit found "What GPA counts toward academic
+    # probation?" scoring below the rerank floor -- no existing source covers academic standing
+    # rules at all. studentcode.illinois.edu, not registrar.illinois.edu, because Article 3 of the
+    # Student Code is the actual campus-wide authority for this (individual colleges publish their
+    # own probation pages with slightly different framing, but this is the single source that
+    # applies university-wide rather than to one college).
+    SourceConfig(
+        url="https://studentcode.illinois.edu/article3/part1/3-110",
+        department="Office of the Registrar",
+        topic=Topic.REGISTRATION_RECORDS,
+        source_type=SourceType.HTML,
+        fallback_title="Academic Standing Rules (Student Code 3-110)",
+    ),
 )
