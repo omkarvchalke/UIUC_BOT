@@ -200,6 +200,20 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         "getting released from your dorm residency agreement",
     ),
     # No exemplars existed for either topic below before -- both relied solely on their plain
+    # descriptions. Confirmed live (150-question sweep, round 2): both queries dead-ended the same
+    # way the ARC bug did, even though real content scores well above the rerank floor once
+    # actually searched under the correct topic (careercenter.illinois.edu/library for the loan
+    # period -- The Career Center's own small book-lending "Resource Hub," a real, separate
+    # library service, not the main University Library; parking.illinois.edu/weekday-and-
+    # overnight-parking, parking.illinois.edu/rules-regulations).
+    Topic.LIBRARIES: (
+        "how many days you can keep a checked-out book before it's due",
+    ),
+    Topic.TRANSPORTATION_PARKING: (
+        "whether overnight parking is allowed in student lots",
+        "whether campus visitors have to pay to park",
+    ),
+    # No exemplars existed for either topic below before -- both relied solely on their plain
     # descriptions. Confirmed live (150-question sweep): every query below landed on a wrong topic
     # confident and thin-relaxation-proof enough to dead-end, same shape as the ARC bug, even
     # though the real content scored well above the rerank floor once actually searched under the
@@ -261,6 +275,11 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         # each landed on a wrong topic with enough of its own documents to dodge relaxation.
         "the difference between the ARC and CRCE recreation facilities",
         "renting outdoor gear like kayaks or camping equipment from campus recreation",
+        # Confirmed live (150-question sweep, round 2): "Is CRCE open on weekends?" lost to
+        # HEALTH_WELLNESS (its "McKinley Health Center's hours on weekends" exemplar) -- same
+        # dead-end shape as the ARC bug. Verified this wording doesn't itself collide with that
+        # McKinley exemplar before landing it.
+        "whether CRCE is open on Saturdays or Sundays",
     ),
     # No exemplars existed for this topic before -- relied solely on its plain description
     # ("student clubs and registered student organizations"). Confirmed live (150-question sweep):
@@ -370,6 +389,11 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         # session?") on top of a fifth new collision. Reverted as net-negative rather than kept,
         # same call this file already made once for a CAREER_EMPLOYMENT exemplar batch above --
         # see topic_regression_set.py's xfail_reason for this one instead of forcing it here.
+        #
+        # "How do I sign up to be an orientation leader?" (150-question sweep, round 2) is a
+        # separate, unrelated query that also dead-ended (lost to STUDENT_ORGANIZATIONS_ENGAGEMENT)
+        # -- fixed cleanly, no collision found against the same collision set above.
+        "how to become an Orientation Leader (OL) for New Student Registration",
     ),
     # This topic's description merged four previously-separate, individually-tuned descriptions
     # (VISA, CPT, OPT, INTERNATIONAL_STUDENT_SERVICES) into one -- by far the largest merge in

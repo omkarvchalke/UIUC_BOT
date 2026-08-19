@@ -495,6 +495,9 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("Can alumni check out books from the library?", Topic.LIBRARIES),
     TopicCase("Does the library offer interlibrary loan?", Topic.LIBRARIES),
     TopicCase("What's the quietest library on campus for studying?", Topic.LIBRARIES),
+    # Real live failure (150-question sweep round 2, confirmed via /retrieve): dead-ended the same
+    # way the ARC bug did before the dedicated exemplar above was added.
+    TopicCase("How long can I keep a book checked out?", Topic.LIBRARIES),
     TopicCase("How do I get from O'Hare Airport to UIUC without a car?", Topic.TRANSPORTATION_PARKING),
     TopicCase("What is the cheapest way to get to campus from Chicago?", Topic.TRANSPORTATION_PARKING),
     TopicCase("How much does an MTD bus pass cost?", Topic.TRANSPORTATION_PARKING),
@@ -525,6 +528,10 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("Do I need a car as a UIUC student?", Topic.TRANSPORTATION_PARKING),
     TopicCase("Does UIUC have a bike share program?", Topic.TRANSPORTATION_PARKING),
     TopicCase("How do I get a Zipcar or campus car-share membership?", Topic.TRANSPORTATION_PARKING),
+    # Both real live failures (150-question sweep round 2, confirmed via /retrieve): dead-ended
+    # the same way the ARC bug did before the dedicated exemplars above were added.
+    TopicCase("Can I park overnight in a student lot?", Topic.TRANSPORTATION_PARKING),
+    TopicCase("Can visitors park on campus for free?", Topic.TRANSPORTATION_PARKING),
     TopicCase("Do I need health insurance as a student?", Topic.HEALTH_WELLNESS),
     TopicCase("How do I waive the student health insurance plan?", Topic.HEALTH_WELLNESS),
     TopicCase("What does the Student Health Insurance Plan cover?", Topic.HEALTH_WELLNESS),
@@ -594,6 +601,9 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     # way the ARC bug above did before the dedicated exemplars above were added.
     TopicCase("What's the difference between the ARC and CRCE?", Topic.CAMPUS_RECREATION),
     TopicCase("Can I rent a kayak from campus rec?", Topic.CAMPUS_RECREATION),
+    # Real live failure (150-question sweep round 2, confirmed via /retrieve): dead-ended the same
+    # way the ARC bug did before the dedicated exemplar above was added.
+    TopicCase("Is CRCE open on weekends?", Topic.CAMPUS_RECREATION),
     TopicCase("How do I register a new student organization?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
     TopicCase("How many student organizations are there at UIUC?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
     TopicCase("How do I join a student club?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
@@ -616,6 +626,9 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     ),
     TopicCase("Can graduate students start a student organization?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
     TopicCase("How do I get involved in student government?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
+    # Real live failure (150-question sweep round 2, confirmed via /retrieve): dead-ended the same
+    # way the ARC bug did before the dedicated exemplar above was added.
+    TopicCase("How do I sign up to be an orientation leader?", Topic.ORIENTATION_NEW_STUDENTS),
     # Both real live failures (150-question sweep, confirmed via /retrieve): dead-ended the same
     # way the ARC bug did before the dedicated exemplars above were added.
     TopicCase("How do I join an RSO?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
