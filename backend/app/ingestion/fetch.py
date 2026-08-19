@@ -4,7 +4,7 @@ from email.utils import format_datetime
 import httpx
 
 _USER_AGENT = "IlliniGuideAI-Ingestion/0.1 (educational RAG project; respects robots.txt)"
-_DEFAULT_TIMEOUT = 15.0
+_DEFAULT_TIMEOUT = 45.0
 
 
 class FetchError(Exception):
