@@ -181,9 +181,21 @@ def make_check_student_profile_node(deps: GraphDependencies) -> Node:
             reply = _latest_human_message(state)
             parsed = _parse_student_type_reply(reply)
             if parsed is not None:
-                await deps.session_service.update_student_type(
-                    uuid.UUID(state["session_id"]), parsed
-                )
+                # Same graceful-degradation contract as load_session above: a session_id with no
+                # matching row in Postgres (stale, or never created via POST /sessions) must not
+                # turn into an unhandled exception that 500s the whole turn -- confirmed live,
+                # this crashed graph.ainvoke with SessionNotFoundError uncaught. The parsed
+                # student_type still applies to *this* turn's in-memory state (still answers the
+                # user's actual question correctly); only the durable Postgres persist is skipped,
+                # so a session missing its DB row simply won't remember student_type next turn --
+                # the same degradation load_session already accepts for a missing session's other
+                # profile fields.
+                try:
+                    await deps.session_service.update_student_type(
+                        uuid.UUID(state["session_id"]), parsed
+                    )
+                except SessionNotFoundError:
+                    logger.warning("graph_session_not_found", session_id=state["session_id"])
                 return {
                     "student_type": parsed,
                     "needs_clarification": False,

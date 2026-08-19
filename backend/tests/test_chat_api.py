@@ -145,6 +145,45 @@ async def test_chat_full_question_returns_grounded_answer_with_citations(
         assert events[0].latency_ms is not None
 
 
+async def test_chat_degrades_gracefully_for_a_session_id_with_no_db_row(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    override_checkpointer: None,
+) -> None:
+    # Regression test for a real bug found live: a session_id that's validly
+    # UUID-shaped but has no matching row in the sessions table (stale, or
+    # never created via POST /sessions) crashed graph.ainvoke with an
+    # unhandled SessionNotFoundError as soon as the user replied to the
+    # profile-clarifying question -- check_student_profile's
+    # update_student_type call had no equivalent to load_session's existing
+    # try/except SessionNotFoundError. Both turns must return 200: the
+    # session_id keeps working for this conversation (checkpointer state is
+    # independent of the sessions table row), it just can't persist
+    # student_type durably for a session that was never actually created.
+    await _seed_and_index(
+        db_session_factory,
+        url="https://example.illinois.edu/parking",
+        title="Parking Permits",
+        chunk_texts=["Students may purchase a parking permit through the Parking Department."],
+        topic=Topic.TRANSPORTATION_PARKING,
+    )
+    session_id = uuid.uuid4()  # deliberately never created via _create_session
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/api/v1/chat",
+            json={"session_id": str(session_id), "message": "How do I get a parking permit?"},
+        )
+        second = await client.post(
+            "/api/v1/chat", json={"session_id": str(session_id), "message": "freshman"}
+        )
+
+    assert first.status_code == 200
+    assert first.json()["needs_clarification"] is True
+
+    assert second.status_code == 200
+    assert second.json()["grounded"] is True
+
+
 async def test_chat_rejects_empty_message(override_checkpointer: None) -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
