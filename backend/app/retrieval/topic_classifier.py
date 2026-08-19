@@ -199,6 +199,27 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         "single-occupancy dorm rooms and the extra fee for a private room",
         "getting released from your dorm residency agreement",
     ),
+    # No exemplars existed for either topic below before -- both relied solely on their plain
+    # descriptions. Confirmed live (150-question sweep): every query below landed on a wrong topic
+    # confident and thin-relaxation-proof enough to dead-end, same shape as the ARC bug, even
+    # though the real content scored well above the rerank floor once actually searched under the
+    # correct topic (mckinley.illinois.edu/hours, mckinley.illinois.edu/fees/health-service-fee;
+    # dres.illinois.edu/faculty-staff, .../community/accessibility-transportation/accessible-
+    # parking, .../community/accessibility-transportation/wheelchair-rental).
+    Topic.HEALTH_WELLNESS: (
+        "McKinley Health Center's hours on weekends",
+        "whether counseling is covered by the mandatory student health fee",
+    ),
+    Topic.ACCESSIBILITY_DISABILITY_SUPPORT: (
+        "getting extended time on exams as a disability accommodation",
+        # "Is there accessible parking near the dorms?" (150-question sweep) was going to get an
+        # exemplar here too, but every wording tried ("accessible parking permits...", "wheelchair-
+        # accessible parking spaces...") either failed to beat TRANSPORTATION_PARKING's own strong
+        # pull for this exact query (0.7249, unmoved by any of them) or caused new regressions on
+        # plain parking queries -- reverted as net-negative rather than kept; see
+        # topic_regression_set.py's xfail_reason for this one instead of forcing it here.
+        "renting a wheelchair through DRES",
+    ),
     Topic.ADMISSIONS: (
         "admission selectivity and acceptance rates by department",
         "acceptance rates and selectivity for different academic colleges within UIUC",
@@ -206,6 +227,16 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         "applying under an early action plan versus the regular decision timeline",
         "the minimum GPA cutoff to transfer in as a junior",
         "fall and spring transfer admission application deadlines",
+        # Confirmed live (150-question sweep): "What's the Common App deadline for Illinois?"
+        # landed on ACADEMIC_CALENDAR_GRADUATION (application deadlines read as "calendar dates")
+        # over ADMISSIONS, and that wrong topic had enough of its own documents to dodge the
+        # topic_filter_min_results relaxation -- same dead-end shape as the ARC bug. Two earlier
+        # drafts each caused a new collision, caught by the full suite before being committed:
+        # "...deadline to submit to Illinois" (lost "What's the Illinois Commitment and am I
+        # eligible?" to this topic) and "...for first-year admission to Illinois" (lost "What's
+        # the closest airport to Champaign-Urbana?" to this topic). Verified clean against both
+        # before landing this wording.
+        "the submission deadline on the Common Application platform for freshman applicants",
     ),
     Topic.ACADEMIC_ADVISING: (
         "the paperwork to officially declare or switch your major within LAS",
@@ -226,6 +257,18 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
     # topics per this file's own established exemplar-over-description-edit convention.
     Topic.CAMPUS_RECREATION: (
         "getting a membership to the ARC or another recreation facility",
+        # Both confirmed live (150-question sweep), same dead-end shape as the ARC bug above --
+        # each landed on a wrong topic with enough of its own documents to dodge relaxation.
+        "the difference between the ARC and CRCE recreation facilities",
+        "renting outdoor gear like kayaks or camping equipment from campus recreation",
+    ),
+    # No exemplars existed for this topic before -- relied solely on its plain description
+    # ("student clubs and registered student organizations"). Confirmed live (150-question sweep):
+    # both queries below landed on a wrong topic confident and thin-relaxation-proof enough to
+    # dead-end, same shape as the ARC bug.
+    Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT: (
+        "joining a registered student organization (RSO)",
+        "the rules for tabling or promoting your student org on the quad",
     ),
     Topic.ACADEMICS: (
         "using the course explorer tool to plan out your class schedule",
@@ -274,6 +317,23 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         "requesting a leave of absence to step away from your studies for a term",
         "checking your assigned time slot to register for classes",
         "whether completing New Student Registration is different from registering for classes",
+        # Three confirmed live (150-question sweep), same dead-end shape as the ARC bug: each
+        # landed on a wrong topic with enough of its own documents to dodge relaxation, while the
+        # real content (registrar.illinois.edu/registration-checklist, .../changing-your-personal-
+        # information-2, .../academic-records-faq) scored well above the rerank floor once
+        # actually searched under this topic.
+        # Two earlier drafts ("...student account...", then "...registration hold on your
+        # record...") each shared enough vocabulary to start winning an unrelated query away
+        # from its real topic ("How much storage do I get with my university email account?" from
+        # TECHNOLOGY_SERVICES, then "What's the process to appeal a parking ticket?" from
+        # TRANSPORTATION_PARKING) -- each caught by the full suite before being committed.
+        # Verified clean against both collisions before landing this wording.
+        "why you can't register for classes because of a hold on your record",
+        "changing your legal name in the university's academic records system",
+        # "...your parents..." (an earlier draft) collided with "Can my parents attend
+        # orientation with me?" -- caught by the full suite before this was committed.
+        # "family members" instead, since FERPA's own real scope isn't parent-specific anyway.
+        "whether family members are allowed to view your academic grades under FERPA",
     ),
     Topic.TECHNOLOGY_SERVICES: (
         "resetting a forgotten NetID or university account password",
@@ -296,6 +356,20 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
     ),
     Topic.ORIENTATION_NEW_STUDENTS: (
         "is attending Welcome Week mandatory before you can pick your classes",
+        # "Is there a specific orientation for international students?" (150-question sweep) was
+        # going to get an exemplar here too -- four wordings were tried, and each fixed the target
+        # while causing a *different* new collision, caught by the full suite before being
+        # committed each time: "...a separate orientation program specifically for international
+        # students" and "...a separate New Student Registration session just for incoming
+        # international students" both sat in too broad a "student services/programs"
+        # neighborhood (won "Can I apply as a second bachelor's degree student?", "Does the
+        # university offer peer tutoring?", "Does ISSS help with cultural adjustment?" instead);
+        # "...register for orientation on a different schedule" collided with "Do I need to
+        # complete registration before orientation?"; "a distinct orientation track..." then
+        # un-fixed an unrelated, already-passing case ("What happens if I miss my orientation
+        # session?") on top of a fifth new collision. Reverted as net-negative rather than kept,
+        # same call this file already made once for a CAREER_EMPLOYMENT exemplar batch above --
+        # see topic_regression_set.py's xfail_reason for this one instead of forcing it here.
     ),
     # This topic's description merged four previously-separate, individually-tuned descriptions
     # (VISA, CPT, OPT, INTERNATIONAL_STUDENT_SERVICES) into one -- by far the largest merge in
@@ -319,6 +393,11 @@ _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
         # as "what is OPT" already in the description above -- given its own exemplar rather than
         # folded into the (already long) description, so it isn't diluted by the rest of it.
         "what is CPT",
+        # Two more confirmed live (150-question sweep), same dead-end shape as the ARC bug. Kept
+        # tightly scoped to OPT mechanics specifically, given this topic's documented history of
+        # becoming an over-broad attractor above -- not a repeat of the reverted 14-exemplar batch.
+        "traveling internationally while on OPT",
+        "how long you're allowed to stay in the US after graduating on OPT",
     ),
 }
 

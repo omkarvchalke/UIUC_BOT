@@ -141,6 +141,9 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
         "What's the difference between early action and regular decision?",
         Topic.ADMISSIONS,
     ),
+    # Real live failure (150-question sweep, confirmed via /retrieve): dead-ended the same way
+    # the ARC bug did before the dedicated exemplar above was added.
+    TopicCase("What's the Common App deadline for Illinois?", Topic.ADMISSIONS),
     TopicCase("How do I register as a new student?", Topic.REGISTRATION_RECORDS),
     TopicCase("What is New Student Registration?", Topic.REGISTRATION_RECORDS),
     TopicCase("When can continuing students register for classes?", Topic.REGISTRATION_RECORDS),
@@ -190,6 +193,18 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("What's Welcome Week actually like?", Topic.ORIENTATION_NEW_STUDENTS),
     TopicCase("Is there a virtual orientation option?", Topic.ORIENTATION_NEW_STUDENTS),
     TopicCase("What topics are covered during Welcome Week programming?", Topic.ORIENTATION_NEW_STUDENTS),
+    # Real live failure (150-question sweep, confirmed via /retrieve: dead-ends the same way the
+    # ARC bug did). Every exemplar wording tried in topic_classifier.py fixed this one query while
+    # causing a different collision each time (5 rounds) -- documented residual, not silently
+    # dropped; see topic_classifier.py's ORIENTATION_NEW_STUDENTS comment for the full history.
+    TopicCase(
+        "Is there a specific orientation for international students?",
+        Topic.ORIENTATION_NEW_STUDENTS,
+        xfail_reason=(
+            "150-question sweep: loses to FINANCIAL_AID_SCHOLARSHIPS "
+            "[currently: financial_aid_scholarships, 0.701]"
+        ),
+    ),
     # Fixed by the taxonomy migration itself, same reasoning as the New Student Registration
     # case above: COURSE_REGISTRATION no longer exists as a separate topic to lose to.
     TopicCase(
@@ -433,41 +448,25 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("Is CPT authorization tied to a specific employer?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
     TopicCase("How do I apply for OPT?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
     TopicCase("What is Optional Practical Training?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
-    TopicCase(
-        "When can graduate students apply for OPT?",
-        Topic.INTERNATIONAL_STUDENTS_IMMIGRATION,
-        xfail_reason=(
-            "migration to Source Manifest V2 taxonomy: loses to ADMISSIONS "
-            "[currently: admissions, 0.681]"
-        ),
-    ),
-    TopicCase(
-        "How long does OPT last after graduation?",
-        Topic.INTERNATIONAL_STUDENTS_IMMIGRATION,
-        xfail_reason=(
-            "migration to Source Manifest V2 taxonomy: loses to REGISTRATION_RECORDS "
-            "[currently: registration_records, 0.622]"
-        ),
-    ),
+    # All four fixed as an unintended side effect of the two OPT exemplars added below
+    # (150-question sweep) -- each was previously xfail for losing to a different wrong topic.
+    TopicCase("When can graduate students apply for OPT?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
+    TopicCase("How long does OPT last after graduation?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
     TopicCase("What is the OPT filing address?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
     TopicCase(
         "Do grad students apply for OPT differently than undergrads?",
         Topic.INTERNATIONAL_STUDENTS_IMMIGRATION,
-        xfail_reason=(
-            "migration to Source Manifest V2 taxonomy: loses to REGISTRATION_RECORDS "
-            "[currently: registration_records, 0.648]"
-        ),
     ),
     TopicCase("What is STEM OPT extension?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
     TopicCase(
         "How soon after graduation do I need to apply for OPT?",
         Topic.INTERNATIONAL_STUDENTS_IMMIGRATION,
-        xfail_reason=(
-            "migration to Source Manifest V2 taxonomy: loses to FINANCIAL_AID_SCHOLARSHIPS "
-            "[currently: financial_aid_scholarships, 0.682]"
-        ),
     ),
     TopicCase("Can I travel internationally while my OPT application is pending?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
+    # Both real live failures (150-question sweep, confirmed via /retrieve): dead-ended the same
+    # way the ARC bug did before the dedicated exemplars above were added.
+    TopicCase("Can I travel home during the semester on OPT?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
+    TopicCase("How long can I stay after I graduate on OPT?", Topic.INTERNATIONAL_STUDENTS_IMMIGRATION),
     TopicCase("How do I connect to campus WiFi?", Topic.TECHNOLOGY_SERVICES),
     TopicCase("How do I set up my university email?", Topic.TECHNOLOGY_SERVICES),
     TopicCase("Who do I contact for IT help?", Topic.TECHNOLOGY_SERVICES),
@@ -568,6 +567,10 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("Is McKinley Health Center free to use?", Topic.HEALTH_WELLNESS),
     TopicCase("Where can I get a flu shot on campus?", Topic.HEALTH_WELLNESS),
     TopicCase("Does the health center offer mental health counseling?", Topic.HEALTH_WELLNESS),
+    # Both real live failures (150-question sweep, confirmed via /retrieve): dead-ended the same
+    # way the ARC bug did before the dedicated exemplars above were added.
+    TopicCase("Is McKinley open on weekends?", Topic.HEALTH_WELLNESS),
+    TopicCase("Is counseling covered by my health fee?", Topic.HEALTH_WELLNESS),
     TopicCase("How do I get a gym membership?", Topic.CAMPUS_RECREATION),
     TopicCase("What fitness facilities are available on campus?", Topic.CAMPUS_RECREATION),
     TopicCase("Can I join intramural sports?", Topic.CAMPUS_RECREATION),
@@ -587,6 +590,10 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     # chunks, all scoring below min_rerank_score, producing a false "couldn't find anything" for
     # a question the corpus actually answers.
     TopicCase("How do I get a membership to the ARC?", Topic.CAMPUS_RECREATION),
+    # Both real live failures (150-question sweep, confirmed via /retrieve): dead-ended the same
+    # way the ARC bug above did before the dedicated exemplars above were added.
+    TopicCase("What's the difference between the ARC and CRCE?", Topic.CAMPUS_RECREATION),
+    TopicCase("Can I rent a kayak from campus rec?", Topic.CAMPUS_RECREATION),
     TopicCase("How do I register a new student organization?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
     TopicCase("How many student organizations are there at UIUC?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
     TopicCase("How do I join a student club?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
@@ -609,6 +616,10 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     ),
     TopicCase("Can graduate students start a student organization?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
     TopicCase("How do I get involved in student government?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
+    # Both real live failures (150-question sweep, confirmed via /retrieve): dead-ended the same
+    # way the ARC bug did before the dedicated exemplars above were added.
+    TopicCase("How do I join an RSO?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
+    TopicCase("What are the rules for tabling on the quad?", Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT),
     TopicCase("When does the fall semester start?", Topic.ACADEMIC_CALENDAR_GRADUATION),
     TopicCase("What is the add/drop deadline?", Topic.ACADEMIC_CALENDAR_GRADUATION),
     TopicCase("When is fall break?", Topic.ACADEMIC_CALENDAR_GRADUATION),
@@ -635,6 +646,11 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     ),
     TopicCase("Can I audit a class without getting credit?", Topic.ACADEMICS),
     TopicCase("Can I place a hold on my own account voluntarily?", Topic.REGISTRATION_RECORDS),
+    # Three real live failures (150-question sweep, confirmed via /retrieve): dead-ended the same
+    # way the ARC bug did before the dedicated exemplars above were added.
+    TopicCase("What do I do if I have a hold on my account?", Topic.REGISTRATION_RECORDS),
+    TopicCase("How do I change my legal name in the system?", Topic.REGISTRATION_RECORDS),
+    TopicCase("Can my parents see my grades?", Topic.REGISTRATION_RECORDS),
     TopicCase("How do I contact campus police?", Topic.CAMPUS_SAFETY),
     TopicCase("Is there a safety escort service on campus?", Topic.CAMPUS_SAFETY),
     TopicCase("How do I report a crime on campus?", Topic.CAMPUS_SAFETY),
@@ -651,6 +667,21 @@ TOPIC_REGRESSION_SET: tuple[TopicCase, ...] = (
     TopicCase("What accommodations does DRES provide for testing?", Topic.ACCESSIBILITY_DISABILITY_SUPPORT),
     TopicCase("Can DRES help with accessible campus housing?", Topic.ACCESSIBILITY_DISABILITY_SUPPORT),
     TopicCase("Do I need a doctor's note to register with DRES?", Topic.ACCESSIBILITY_DISABILITY_SUPPORT),
+    # Both real live failures (150-question sweep, confirmed via /retrieve): dead-ended the same
+    # way the ARC bug did before the dedicated exemplars above were added.
+    TopicCase("How do I get extra time on exams?", Topic.ACCESSIBILITY_DISABILITY_SUPPORT),
+    TopicCase("Can I rent a wheelchair from campus?", Topic.ACCESSIBILITY_DISABILITY_SUPPORT),
+    # Also a real live failure, but every exemplar wording tried in topic_classifier.py either
+    # failed to beat TRANSPORTATION_PARKING's own strong pull for this exact phrasing or caused
+    # new regressions on plain parking queries -- documented residual, not silently dropped.
+    TopicCase(
+        "Is there accessible parking near the dorms?",
+        Topic.ACCESSIBILITY_DISABILITY_SUPPORT,
+        xfail_reason=(
+            "150-question sweep: loses to TRANSPORTATION_PARKING "
+            "[currently: transportation_parking, 0.725]"
+        ),
+    ),
     TopicCase("What career services does UIUC offer?", Topic.CAREER_EMPLOYMENT),
     TopicCase(
         "How do I get my resume reviewed?",
