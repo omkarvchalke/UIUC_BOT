@@ -4,7 +4,7 @@ from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation_session import StudentType
-from app.models.document import Audience, Document, DocumentChunk, DocumentType, Topic
+from app.models.document import Audience, Document, DocumentChunk, DocumentType, IndexStatus, Topic
 
 
 @dataclass(frozen=True)
@@ -63,12 +63,16 @@ class VectorRepository:
         audience: Audience | None,
         document_type: DocumentType | None,
     ) -> list[ColumnElement[bool]]:
-        # Same four independent AND-ed conditions HybridRetriever's
-        # in-Python corpus filter (_filter_corpus/_get_corpus) applies to
-        # the BM25 side -- both sides have to agree on which chunks are
-        # eligible, or semantic and keyword ranking would be scoring two
+        # Same conditions HybridRetriever's in-Python corpus filter
+        # (_filter_corpus/_get_corpus) applies to the BM25 side -- both sides have to agree on
+        # which chunks are eligible, or semantic and keyword ranking would be scoring two
         # different candidate pools.
-        conditions: list[ColumnElement[bool]] = []
+        #
+        # index_status, unlike the four below, is not a per-call optional filter: it's a
+        # standing corpus policy (Source Manifest V2, Part 7) applied unconditionally on every
+        # search -- review/blocked/deprecated documents stay in the database (never deleted, for
+        # audit/history) but must never surface to a normal user query.
+        conditions: list[ColumnElement[bool]] = [Document.index_status == IndexStatus.APPROVED]
         if topic is not None:
             conditions.append(Document.topic == topic)
 

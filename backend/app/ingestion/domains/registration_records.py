@@ -29,36 +29,47 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://registrar.illinois.edu/fall-2026-academic-calendar/",
         department="Office of the Registrar",
-        topic=Topic.ACADEMIC_CALENDAR,
+        topic=Topic.ACADEMIC_CALENDAR_GRADUATION,
         source_type=SourceType.HTML,
         fallback_title="Fall 2026 Academic Calendar",
     ),
     SourceConfig(
         url="https://registrar.illinois.edu/registration/",
         department="Office of the Registrar",
-        topic=Topic.REGISTRATION,
+        topic=Topic.REGISTRATION_RECORDS,
         source_type=SourceType.HTML,
         fallback_title="Registration",
     ),
     SourceConfig(
         url="https://registrar.illinois.edu/registration/how-to-register/",
         department="Office of the Registrar",
-        topic=Topic.COURSE_REGISTRATION,
+        topic=Topic.REGISTRATION_RECORDS,
         source_type=SourceType.HTML,
         fallback_title="How to Register for Classes",
     ),
     SourceConfig(
         url="https://registrar.illinois.edu/graduation/",
         department="Office of the Registrar",
-        topic=Topic.ACADEMIC_CALENDAR,
+        topic=Topic.ACADEMIC_CALENDAR_GRADUATION,
         source_type=SourceType.HTML,
         fallback_title="Graduation",
     ),
     SourceConfig(
         url="https://registrar.illinois.edu/academic-records/transcripts/",
         department="Office of the Registrar",
-        topic=Topic.REGISTRATION,
+        topic=Topic.REGISTRATION_RECORDS,
         source_type=SourceType.HTML,
         fallback_title="Transcripts",
+    ),
+    # Explicit anchor for Topic.ACADEMICS (Source Manifest V2 migration): without at least one
+    # manually-curated source, this topic exists only via crawler auto-classification, the same
+    # gap international_services.py's own comment documents for VISA under the old taxonomy --
+    # test_every_topic_has_at_least_one_source guards against exactly this.
+    SourceConfig(
+        url="https://courses.illinois.edu",
+        department="Office of the Registrar",
+        topic=Topic.ACADEMICS,
+        source_type=SourceType.HTML,
+        fallback_title="Course Explorer",
     ),
 )

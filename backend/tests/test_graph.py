@@ -192,7 +192,7 @@ async def test_retrieval_falls_back_when_topic_classification_is_wrong(
             url="https://example.illinois.edu/opt",
             title="Optional Practical Training",
             chunk_texts=["Optional Practical Training (OPT) allows F-1 students to work."],
-            topic=Topic.OPT,
+            topic=Topic.INTERNATIONAL_STUDENTS_IMMIGRATION,
         )
         deps = _build_deps(session)
         deps.topic_classifier = AlwaysWrongTopicClassifier()  # type: ignore[assignment]
@@ -225,7 +225,7 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
 
     class AlwaysCptTopicClassifier:
         def classify(self, message: str) -> TopicClassification:
-            return TopicClassification(topic=Topic.CPT, confidence=0.99)
+            return TopicClassification(topic=Topic.INTERNATIONAL_STUDENTS_IMMIGRATION, confidence=0.99)
 
     # Distinct wording per document, not just a distinct URL/title: the
     # answer generator (ExtractiveAnswerGenerator) dedupes identical
@@ -249,7 +249,7 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
                     "Curricular Practical Training (CPT) requires "
                     f"{detail} before F-1 students may begin CPT work authorization."
                 ],
-                topic=Topic.CPT,
+                topic=Topic.INTERNATIONAL_STUDENTS_IMMIGRATION,
             )
         await _seed_and_index(
             session,
@@ -259,7 +259,7 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
                 "Optional Practical Training (OPT) is practical training work "
                 "authorization available to F-1 students after graduation."
             ],
-            topic=Topic.OPT,
+            topic=Topic.INTERNATIONAL_STUDENTS_IMMIGRATION,
         )
         deps = _build_deps(session)
         deps.topic_classifier = AlwaysCptTopicClassifier()  # type: ignore[assignment]
@@ -271,11 +271,11 @@ async def test_topic_filter_excludes_a_keyword_overlapping_different_topic_doc(
             config=config_for(session_id),
         )
 
-    assert result["topic"] is Topic.CPT
+    assert result["topic"] is Topic.INTERNATIONAL_STUDENTS_IMMIGRATION
     citation_urls = {citation["url"] for citation in result["citations"]}
     assert len(citation_urls) >= 3
     assert "https://example.illinois.edu/opt" not in citation_urls
-    assert all(citation["topic"] == Topic.CPT.value for citation in result["citations"])
+    assert all(citation["topic"] == Topic.INTERNATIONAL_STUDENTS_IMMIGRATION.value for citation in result["citations"])
 
 
 async def test_retrieval_falls_back_when_student_type_filter_excludes_everything(
@@ -298,7 +298,7 @@ async def test_retrieval_falls_back_when_student_type_filter_excludes_everything
             url="https://example.illinois.edu/visa-status",
             title="Maintaining F-1 Visa Status",
             chunk_texts=["Maintain your F-1 visa status by staying enrolled full-time."],
-            topic=Topic.VISA,
+            topic=Topic.INTERNATIONAL_STUDENTS_IMMIGRATION,
             student_types=(StudentType.INTERNATIONAL,),
         )
         session_id = await _create_session(session, student_type=StudentType.GRADUATE)
@@ -482,7 +482,7 @@ async def test_query_override_does_not_leak_into_a_later_unrelated_turn(
                 "Select Register for Classes from the Class Registration Main Menu and "
                 "choose the term you would like to register for."
             ],
-            topic=Topic.COURSE_REGISTRATION,
+            topic=Topic.REGISTRATION_RECORDS,
         )
         session_id = await _create_session(session, student_type=None)
         graph = _build_test_graph(session, test_checkpointer)
@@ -496,7 +496,7 @@ async def test_query_override_does_not_leak_into_a_later_unrelated_turn(
             turn_input(session_id, "How do I register for classes?"), config=config
         )
 
-    assert third["topic"] == Topic.COURSE_REGISTRATION
+    assert third["topic"] == Topic.REGISTRATION_RECORDS
     assert third["grounded"] is True
     assert "Register for Classes" in third["answer"]
 

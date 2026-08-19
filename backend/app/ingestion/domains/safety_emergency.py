@@ -61,7 +61,7 @@ SOURCES: tuple[SourceConfig, ...] = (
         source_type=SourceType.HTML,
         fallback_title="Contact - Division of Public Safety",
     ),
-    # Topic.ACCESSIBILITY didn't exist until a crawl of dres.illinois.edu
+    # Topic.ACCESSIBILITY_DISABILITY_SUPPORT didn't exist until a crawl of dres.illinois.edu
     # (added to the approved-domains crawler) surfaced the gap: with no
     # accessibility-specific topic to embed against, the classifier was
     # tagging DRES pages as international_student_services, which is a
@@ -71,14 +71,14 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://dres.illinois.edu/apply",
         department="Disability Resources and Educational Services",
-        topic=Topic.ACCESSIBILITY,
+        topic=Topic.ACCESSIBILITY_DISABILITY_SUPPORT,
         source_type=SourceType.HTML,
         fallback_title="Apply for Accommodations - DRES",
     ),
     SourceConfig(
         url="https://dres.illinois.edu/apply/documentation-requirements",
         department="Disability Resources and Educational Services",
-        topic=Topic.ACCESSIBILITY,
+        topic=Topic.ACCESSIBILITY_DISABILITY_SUPPORT,
         source_type=SourceType.HTML,
         fallback_title="Documentation Requirements - DRES",
     ),

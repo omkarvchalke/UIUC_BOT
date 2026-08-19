@@ -21,30 +21,78 @@ _EMBEDDING_DIMENSION = 384
 
 
 class Topic(enum.StrEnum):
-    ADMISSIONS = "admissions"
-    REGISTRATION = "registration"
-    ORIENTATION = "orientation"
-    HOUSING = "housing"
-    DINING = "dining"
-    FINANCIAL_AID = "financial_aid"
-    SCHOLARSHIPS = "scholarships"
-    STUDENT_EMPLOYMENT = "student_employment"
-    INTERNATIONAL_STUDENT_SERVICES = "international_student_services"
-    VISA = "visa"
-    CPT = "cpt"
-    OPT = "opt"
-    TECHNOLOGY_SERVICES = "technology_services"
-    LIBRARIES = "libraries"
-    TRANSPORTATION = "transportation"
-    HEALTH_INSURANCE = "health_insurance"
-    CAMPUS_RECREATION = "campus_recreation"
-    STUDENT_ORGANIZATIONS = "student_organizations"
-    ACADEMIC_CALENDAR = "academic_calendar"
-    COURSE_REGISTRATION = "course_registration"
-    CAMPUS_SAFETY = "campus_safety"
-    ACCESSIBILITY = "accessibility"
-    CAREER_SERVICES = "career_services"
+    """V2 taxonomy (21 topics), migrated from an earlier 24-topic scheme per an external
+    "Source Manifest V2" authoritative document. See docs/source-manifest.md and
+    backend/scripts/data/source_manifest_v2.md for the taxonomy this was migrated to, and
+    backend/scripts/remap_topics_v2.py for how existing rows were reclassified (via
+    TopicClassifier against real stored text, not a hand-copied per-URL table -- see that
+    script's docstring for why). Some topics carry an optional Document.subtopic (e.g.
+    INTERNATIONAL_STUDENTS_IMMIGRATION has OPT/CPT/Visa & Immigration/International Student
+    Services subtopics) -- do not confuse this category-level subtopic with
+    DocumentChunk.subtopic, which is an unrelated concept (a heading-path within one page).
+    """
+
     ACADEMIC_ADVISING = "academic_advising"
+    ACADEMIC_CALENDAR_GRADUATION = "academic_calendar_graduation"
+    ACADEMICS = "academics"
+    ACCESSIBILITY_DISABILITY_SUPPORT = "accessibility_disability_support"
+    ADMISSIONS = "admissions"
+    CAMPUS_RECREATION = "campus_recreation"
+    CAMPUS_SAFETY = "campus_safety"
+    CAMPUS_SERVICES_FACILITIES = "campus_services_facilities"
+    CAREER_EMPLOYMENT = "career_employment"
+    DINING = "dining"
+    FINANCIAL_AID_COSTS = "financial_aid_costs"
+    FINANCIAL_AID_SCHOLARSHIPS = "financial_aid_scholarships"
+    HEALTH_WELLNESS = "health_wellness"
+    HOUSING = "housing"
+    INTERNATIONAL_STUDENTS_IMMIGRATION = "international_students_immigration"
+    LIBRARIES = "libraries"
+    ORIENTATION_NEW_STUDENTS = "orientation_new_students"
+    REGISTRATION_RECORDS = "registration_records"
+    STUDENT_ORGANIZATIONS_ENGAGEMENT = "student_organizations_engagement"
+    TECHNOLOGY_SERVICES = "technology_services"
+    TRANSPORTATION_PARKING = "transportation_parking"
+
+
+class SourceRole(enum.StrEnum):
+    """What kind of content a source is -- distinct from DocumentType (which is about
+    presentation format: FAQ, form, etc). Drives role-aware chunk sizing (see
+    app/ingestion/chunking.py::ROLE_CHUNK_CONFIG) and a retrieval_priority baseline (see
+    app/retrieval/priority.py). REVIEW is a deliberate escape hatch: ingestion code that can't
+    confidently classify a role leaves this null rather than forcing an inaccurate guess (Source
+    Manifest V2, Part 3), and null is treated the same as REFERENCE for chunking/priority
+    purposes."""
+
+    POLICY = "policy"
+    DEADLINE = "deadline"
+    PROCEDURE = "procedure"
+    COURSE = "course"
+    PROGRAM = "program"
+    SERVICE = "service"
+    DIRECTORY = "directory"
+    NEWS = "news"
+    HISTORICAL = "historical"
+    REFERENCE = "reference"
+
+
+class TemporalScope(enum.StrEnum):
+    CURRENT = "current"
+    HISTORICAL = "historical"
+    ARCHIVE = "archive"
+    UNSPECIFIED = "unspecified"
+
+
+class IndexStatus(enum.StrEnum):
+    """Governs whether a Document participates in normal retrieval (see
+    VectorRepository._filters / HybridRetriever._filter_corpus). Only APPROVED sources are
+    returned to users. BLOCKED/DEPRECATED rows are never deleted -- kept for audit/history per
+    Source Manifest V2, Part 7."""
+
+    APPROVED = "approved"
+    REVIEW = "review"
+    BLOCKED = "blocked"
+    DEPRECATED = "deprecated"
 
 
 class SourceType(enum.StrEnum):
@@ -138,6 +186,39 @@ class Document(Base):
     # reindex needed) or the embedding model can change project-wide
     # (forcing every document to reindex regardless of content_hash).
     embedded_content_hash: Mapped[str | None] = mapped_column(String(64))
+    # Category-level subtopic within `topic` (e.g. "OPT" under
+    # INTERNATIONAL_STUDENTS_IMMIGRATION) -- distinct from DocumentChunk.subtopic, which is an
+    # unrelated per-chunk heading path within one page. Nullable: most topics have no subtopic
+    # split, and pages ingested before this column existed have no value until reclassified (see
+    # scripts/remap_topics_v2.py).
+    subtopic: Mapped[str | None] = mapped_column(String(255))
+    # Manifest fields added for Source Manifest V2 (see backend/scripts/data/source_manifest_v2.md).
+    # All nullable/defaulted: no value is invented for a source the pipeline can't confidently
+    # determine (V2 Part 1's own rule) -- new ingestion runs populate what they reasonably can,
+    # existing rows are backfilled by scripts/remap_topics_v2.py where a real signal exists.
+    source_role: Mapped[SourceRole | None] = mapped_column(_string_backed_enum(SourceRole, length=32))
+    # Computed, not copied from V2's literal per-row values (V2's own authority_score is a flat
+    # 10 for ~1000+ of 1069 rows, which would make it useless as the ranking signal it's meant to
+    # be) -- see app/retrieval/priority.py for the small, documented formula that derives both
+    # from source_type/source_role/temporal_scope instead.
+    authority_score: Mapped[int | None] = mapped_column()
+    retrieval_priority: Mapped[int | None] = mapped_column()
+    temporal_scope: Mapped[TemporalScope | None] = mapped_column(
+        _string_backed_enum(TemporalScope, length=32)
+    )
+    academic_year: Mapped[str | None] = mapped_column(String(16))
+    # Governs whether this Document participates in normal retrieval -- see IndexStatus.
+    index_status: Mapped[IndexStatus] = mapped_column(
+        _string_backed_enum(IndexStatus, length=16), default=IndexStatus.APPROVED
+    )
+    # Identifies which embedding configuration produced this document's current chunk
+    # embeddings, for future embedding-model migrations (Source Manifest V2, Part 8). Set by
+    # IndexingService whenever chunks are (re-)embedded; null for chunks embedded before this
+    # column existed. Deliberately does NOT trigger any automatic re-embedding by itself --
+    # embedded_content_hash already gates that; this is passive identification only.
+    embedding_version: Mapped[str | None] = mapped_column(String(64))
+    http_status: Mapped[int | None] = mapped_column()
+    word_count: Mapped[int | None] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -157,7 +238,12 @@ class DocumentChunk(Base):
     __tablename__ = "document_chunks"
     __table_args__ = (UniqueConstraint("document_id", "chunk_number"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    # No default=uuid.uuid4 (unlike Document.id): chunk IDs are deterministic, computed by
+    # app.ingestion.chunk_identity.compute_chunk_id from (document_id, section_index,
+    # chunk_number, content) and passed in explicitly by DocumentRepository.replace_chunks. This
+    # means re-chunking a document whose text hasn't changed reproduces the exact same chunk IDs
+    # instead of churning them on every re-chunk (Source Manifest V2, Part 16).
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
     document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"), index=True
     )
@@ -169,6 +255,19 @@ class DocumentChunk(Base):
     # Nullable: populated by the semantic chunker, not this phase -- see
     # app/ingestion/chunking.py's module docstring for the phase boundary.
     subtopic: Mapped[str | None] = mapped_column(String(255))
+    # Index (0-based) of the Section (see app/ingestion/extracted_document.py) this chunk was
+    # split from. Chunks sharing (document_id, section_index) are siblings from the same parent
+    # section -- this is the "parent" side of parent/child chunking (Source Manifest V2, Part
+    # 14), deliberately without a second table or self-referential FK: a section's boundary is
+    # already fully described by (document_id, section_index), so no extra row is needed to
+    # represent "the parent."
+    section_index: Mapped[int] = mapped_column(default=0)
+    # Full un-split text of this chunk's parent section, set ONLY when that section had to be
+    # split into more than one child chunk (kept null when a chunk IS its whole section, to avoid
+    # duplicating storage for the common case). context_builder can expand a matched chunk to its
+    # full parent section here when more context is needed, without a second table or re-fetching
+    # the source page (Source Manifest V2, Part 14).
+    parent_text: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # Set by IndexingService once this chunk's Document has been embedded
     # (null in between: a chunk always exists in Postgres, via

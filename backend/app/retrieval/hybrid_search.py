@@ -5,10 +5,18 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.embeddings.embedder import Embedder
 from app.models.conversation_session import StudentType
-from app.models.document import Audience, DocumentChunk, DocumentType, SourceType, Topic
+from app.models.document import (
+    Audience,
+    DocumentChunk,
+    DocumentType,
+    IndexStatus,
+    SourceType,
+    Topic,
+)
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.vector_repository import VectorRepository
 from app.retrieval.bm25_search import BM25Search
+from app.retrieval.priority import priority_multiplier
 
 logger = get_logger(__name__)
 
@@ -128,6 +136,12 @@ class HybridRetriever:
         cache_key = (topic, student_type)
         if cache_key not in self._corpus_cache:
             chunks = await self._documents.list_all_chunks_with_documents()
+            # Unconditional, mirroring VectorRepository._filters's index_status predicate: a
+            # standing corpus policy (Source Manifest V2, Part 7), not a per-request choice --
+            # review/blocked/deprecated documents must never surface on either side of the fuse.
+            chunks = [
+                chunk for chunk in chunks if chunk.document.index_status == IndexStatus.APPROVED
+            ]
             if topic is not None:
                 # ==, not is: Topic is a StrEnum, and a caller's topic value
                 # isn't guaranteed to be the enum singleton -- graph/nodes.py
@@ -155,7 +169,9 @@ class HybridRetriever:
         limit: int,
     ) -> list[RetrievedChunk]:
         all_ids = set(semantic_ranks) | set(bm25_ranks)
-        rrf_k = get_settings().rrf_k
+        settings = get_settings()
+        rrf_k = settings.rrf_k
+        boost_range = settings.retrieval_priority_boost_range
 
         scored: list[tuple[str, float]] = []
         for chunk_id in all_ids:
@@ -164,6 +180,15 @@ class HybridRetriever:
                 score += 1 / (rrf_k + semantic_ranks[chunk_id])
             if chunk_id in bm25_ranks:
                 score += 1 / (rrf_k + bm25_ranks[chunk_id])
+            # Boost, not override (Source Manifest V2, Part 4): applied after RRF fusion, so
+            # semantic/BM25 rank agreement still dominates which chunks even reach this list --
+            # retrieval_priority only nudges ordering among chunks that both rankers already
+            # consider relevant.
+            chunk = corpus_by_id.get(chunk_id)
+            if chunk is not None:
+                score *= priority_multiplier(
+                    chunk.document.retrieval_priority, boost_range=boost_range
+                )
             scored.append((chunk_id, score))
 
         scored.sort(key=lambda pair: pair[1], reverse=True)

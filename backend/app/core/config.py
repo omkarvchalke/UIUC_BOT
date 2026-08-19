@@ -96,6 +96,24 @@ class Settings(BaseSettings):
     query_decomposition_temperature: float = 0.0
     query_decomposition_max_completion_tokens: int = 512
 
+    # Source Manifest V2 metadata (see backend/scripts/data/source_manifest_v2.md).
+    # Role-aware chunk sizing (app/ingestion/chunking.py::role_chunk_config) is specified in
+    # tokens there; the pipeline has no tokenizer dependency, so this is a documented
+    # approximation for converting a token target to a character target, not a precise count.
+    chars_per_token: int = 4
+    # Stamped onto Document.embedding_version by IndexingService whenever a document's chunks
+    # are (re-)embedded, so a future embedding-model change can be identified per-document
+    # instead of assumed uniform across the whole corpus. Defaults to the embedding model name
+    # since that's the actual thing that determines vector compatibility; bump this (or the
+    # model name) together if the model ever changes.
+    embedding_version: str = "BAAI/bge-small-en-v1.5"
+    # retrieval_priority boost applied in HybridRetriever._fuse: normalized priority (0-100) maps
+    # linearly onto [1 - retrieval_priority_boost_range, 1 + retrieval_priority_boost_range],
+    # multiplying each chunk's fused RRF score. Deliberately small -- a boost/nudge per Source
+    # Manifest V2 Part 4 ("do not allow retrieval_priority to completely override semantic
+    # relevance"), not a re-ranking mechanism in its own right.
+    retrieval_priority_boost_range: float = 0.1
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

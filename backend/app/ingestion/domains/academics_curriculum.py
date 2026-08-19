@@ -19,10 +19,15 @@ SEEDS: tuple[CrawlSeed, ...] = (
 )
 
 SOURCES: tuple[SourceConfig, ...] = (
+    # CAMPUS_SERVICES_FACILITIES, not ACADEMICS: Source Manifest V2 classifies the whole
+    # catalog.illinois.edu domain (per-department course listings, general degree/policy pages)
+    # under Campus Services & Facilities, reserving ACADEMICS for Course Explorer/grades/GPA
+    # content instead -- see the ambiguity noted on both topics' descriptions in
+    # topic_classifier.py.
     SourceConfig(
         url="https://catalog.illinois.edu/",
         department="Office of the Provost",
-        topic=Topic.COURSE_REGISTRATION,
+        topic=Topic.CAMPUS_SERVICES_FACILITIES,
         source_type=SourceType.HTML,
         fallback_title="Course Catalog",
     ),

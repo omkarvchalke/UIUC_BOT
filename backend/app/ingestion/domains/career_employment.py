@@ -34,7 +34,7 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://hireillini.illinois.edu/",
         department="The Career Center",
-        topic=Topic.STUDENT_EMPLOYMENT,
+        topic=Topic.CAREER_EMPLOYMENT,
         source_type=SourceType.HTML,
         fallback_title="Hire Illini",
     ),
@@ -42,25 +42,25 @@ SOURCES: tuple[SourceConfig, ...] = (
     # career services does UIUC offer" came back with zero citations even
     # though the crawler seed covers careercenter.illinois.edu, because
     # nothing pointed at the specific service pages (vs. the site's nav-heavy
-    # homepage). Distinct from Topic.STUDENT_EMPLOYMENT (on-campus jobs).
+    # homepage). Distinct from Topic.CAREER_EMPLOYMENT (on-campus jobs).
     SourceConfig(
         url="https://careercenter.illinois.edu/career-center-services/general-career-coaching",
         department="The Career Center",
-        topic=Topic.CAREER_SERVICES,
+        topic=Topic.CAREER_EMPLOYMENT,
         source_type=SourceType.HTML,
         fallback_title="General Career Coaching",
     ),
     SourceConfig(
         url="https://careercenter.illinois.edu/career-center-services/document-review-services",
         department="The Career Center",
-        topic=Topic.CAREER_SERVICES,
+        topic=Topic.CAREER_EMPLOYMENT,
         source_type=SourceType.HTML,
         fallback_title="Document Review Services (Resume, Cover Letter, LinkedIn)",
     ),
     SourceConfig(
         url="https://careercenter.illinois.edu/jobs-and-internships/searchingforjob",
         department="The Career Center",
-        topic=Topic.CAREER_SERVICES,
+        topic=Topic.CAREER_EMPLOYMENT,
         source_type=SourceType.HTML,
         fallback_title="Job Search",
     ),

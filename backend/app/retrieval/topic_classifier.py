@@ -20,311 +20,141 @@ from app.models.document import Topic
 # ranked the real OPT page #1. A wrong classification here just means an
 # occasional unnecessary clarifying question; as a hard filter it would
 # have silently returned zero results instead.
+#
+# MIGRATED to Source Manifest V2's 21-topic taxonomy (see
+# backend/scripts/data/source_manifest_v2.md and app/models/document.py's
+# Topic docstring). Wording below is deliberately carried over/merged from
+# the previous 24-topic taxonomy's descriptions wherever a new topic maps
+# cleanly onto one or more old ones, rather than rewritten from scratch --
+# every phrase kept here was independently earned by a real regression-set
+# or live-sweep failure (see app/evaluation/topic_regression_set.py's module
+# docstring for that history) and there is no equivalent verified history
+# yet for brand-new wording. Two genuinely new topics with no direct old
+# equivalent (ACADEMICS, CAMPUS_SERVICES_FACILITIES) are grounded directly
+# in what Source Manifest V2 actually lists under each -- see the comments
+# on those two entries for the specific ambiguity between them.
 _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
-    # "letters of recommendation" added in a 39-xfail follow-up round (see
-    # the REGISTRATION-attractor comment below for the regression suite
-    # this refers to): "Do I need letters of recommendation to apply?" was
-    # losing to Topic.REGISTRATION with nothing recommendation-specific to
-    # compete with it. Several other candidate additions to this
-    # description (early action/regular decision, deferring admission,
-    # declaring a major) were tried and rejected in the same round --
-    # each caused new regressions on "How do I apply for financial aid?"
-    # or similar, since ADMISSIONS' "apply"/"new student" wording is
-    # already a near-default match for anything application-shaped.
     Topic.ADMISSIONS: (
         "becoming a new UIUC student: freshman or transfer admission requirements, "
         "essays, letters of recommendation, deadlines for prospective and "
         "incoming students"
     ),
-    # Was just "registering as a new or continuing student" -- short enough
-    # that it acted as a generic default attractor for almost anything
-    # administrative-sounding ("sign up", "register with", "apply for", "a
-    # hold on my account"), the single biggest source of misclassifications
-    # found by the 306-case regression suite (app/evaluation/
-    # topic_regression_set.py): 15 of its 63 xfail cases specifically lost
-    # to Topic.REGISTRATION, spanning 9 different *other* correct topics.
-    #
-    # Rewritten to (a) explicitly name New Student Registration (NSR) as
-    # the specific first-time-enrollment event this topic is really about
-    # -- not generic "registering" -- and (b) add the *other* real content
-    # actually filed under this topic (Office of the Registrar records:
-    # transcripts, FERPA, diplomas, leaving the university, enrollment
-    # verification letters), which had no representation in the
-    # description at all despite being real, explicitly-sourced content
-    # (see app/ingestion/domains/registration_records.py).
-    #
-    # This traded 8 fixed misclassifications for 1 new one ("Can I skip New
-    # Student Registration if I've already registered for classes?", a
-    # compound query that names both senses of "register" in one sentence
-    # -- accepted as a residual, see topic_regression_set.py) -- verified
-    # against the full 306-case regression suite, not just the queries
-    # motivating the change. Also revealed 3 cases originally assumed to be
-    # about NSR ("When can continuing students register for classes?",
-    # "How do I check my registration appointment time?", "Do continuing
-    # students need to register every semester?") that, on reflection, are
-    # genuinely more about course registration mechanics than the one-time
-    # NSR event -- relabeled to Topic.COURSE_REGISTRATION in the regression
-    # suite rather than fought for here.
-    Topic.REGISTRATION: (
+    Topic.REGISTRATION_RECORDS: (
         "New Student Registration (NSR), completing registration as a new "
-        "or continuing student before your first semester, plus other "
-        "Office of the Registrar records services: enrollment "
-        "verification letters, transcripts, FERPA privacy, diplomas, and "
-        "leaving the university"
+        "or continuing student before your first semester, registering for "
+        "classes and course registration, plus other Office of the "
+        "Registrar records services: enrollment verification letters, "
+        "transcripts, FERPA privacy, diplomas, and leaving the university"
     ),
-    Topic.ORIENTATION: "new student orientation, welcome week, orientation programs",
-    # Was "on-campus housing..." -- the REGISTRATION-attractor follow-up
-    # round (306-case regression suite) found "on-campus" was itself acting
-    # as a mini-attractor: 5 unrelated queries mentioning "on campus"
-    # (international student resources, printing documents, reserving a
-    # library study room, campus pools, working on campus) were losing to
-    # Topic.HOUSING purely off that bigram. Swapping to "student housing"
-    # (same meaning, no shared "on campus" wording with the retrieval
-    # corpus's other "on campus X" phrasing) fixed all 5 with zero
-    # regressions -- verified against the full 306-case suite. "move-in
-    # day" and "dorm room types" added on top of that fix, for "single-
-    # occupancy dorm rooms" and "earliest move-in" queries that scored
-    # below threshold without them.
+    Topic.ORIENTATION_NEW_STUDENTS: "new student orientation, welcome week, orientation programs",
     Topic.HOUSING: (
         "student housing, residence halls, dorms, where students live, "
         "move-in day, and dorm room types"
     ),
     Topic.DINING: "dining halls, meal plans, food on campus",
-    # "Illinois Commitment" and "i-card banking services" deliberately in
-    # the description text -- two separate real findings from the same
-    # 200-question sweep: "What is the Illinois Commitment program?" scored
-    # 0.436 (below threshold, not even top-ranked) without the program name;
-    # "What banking options are available through the i-card?" scored
-    # closest to Topic.VISA (0.569 vs financial_aid's 0.564, an unrelated
-    # near-tie -- "i-card" has no strong single-topic home in this
-    # taxonomy) without the i-card phrase, misclassifying to visa and
-    # answering with U-visa/TRUST-Act content for a banking question.
-    # "billing refunds and overpayments" deliberately added too: "Are there
-    # refund options for overpayment?" scored 0.519 (below financial_aid's
-    # closest competitor, health_insurance's "waiving/opting out" phrasing
-    # below) without it.
-    # "buying textbooks" deliberately added too: a re-test-all-cases sweep
-    # found "Where do I buy textbooks?" had regressed to Topic.REGISTRATION
-    # (0.572 vs financial_aid's 0.564) after other topics' descriptions
-    # below got more specific and narrowed their generic footprint,
-    # leaving registration's short, generic description ("registering as a
-    # new or continuing student") an unintended default attractor for
-    # administrative-sounding queries it has nothing to do with.
-    Topic.FINANCIAL_AID: (
+    # "billing refunds and overpayments" deliberately moved OUT of this description and into
+    # FINANCIAL_AID_COSTS below -- Source Manifest V2 splits registrar tuition/fee/billing pages
+    # (a small, narrow topic: 9 documents) from general financial-aid/scholarship content (73
+    # documents) that this topic now covers. "buying textbooks" also moved out, to
+    # CAMPUS_SERVICES_FACILITIES below -- V2's per-URL data places the actual bookstore pages
+    # there, not here (see app/ingestion/domains/graduation_records.py for the full reasoning);
+    # "i-card banking services" stays since that's a genuinely separate concept from the i-card
+    # *services* content CAMPUS_SERVICES_FACILITIES covers (getting/using the physical ID card
+    # vs. its optional banking/debit feature).
+    Topic.FINANCIAL_AID_SCHOLARSHIPS: (
         "financial aid, tuition costs, paying for college, FAFSA, "
         "the Illinois Commitment free-tuition program, i-card banking services, "
-        "billing refunds and overpayments, buying textbooks"
-    ),
-    # "scholarship application deadlines" added in a 39-xfail follow-up
-    # round: "What is the deadline to apply for scholarships?" was losing
-    # to Topic.ACADEMIC_CALENDAR, whose bare "deadlines" wording is a
-    # recurring attractor across several topics.
-    Topic.SCHOLARSHIPS: (
         "scholarships and merit awards, including scholarship application deadlines"
     ),
-    # "Hire Illini" (the job board's actual name) deliberately in the
-    # description text -- same bare-proper-noun pattern as Illinois
-    # Commitment above: 0.558 without it, below threshold.
-    # "work hour limits" deliberately added too: same Topic.REGISTRATION
-    # attractor problem as financial_aid's "buying textbooks" above --
-    # "How many hours can I work as a student employee?" had regressed to
-    # registration (0.635 vs student_employment's 0.620).
-    # "graduate assistantships" added in the REGISTRATION-attractor follow-up
-    # round: "What's the difference between a graduate assistantship and
-    # work study?" was losing to Topic.OPT with no assistantship wording to
-    # compete with. "applying for" prefixed onto it in a later 39-xfail
-    # follow-up round: "How do I apply for a graduate assistantship?" was
-    # separately losing to Topic.ACADEMIC_ADVISING until this was added.
-    Topic.STUDENT_EMPLOYMENT: (
-        "on-campus jobs, work study, student employment, applying for "
-        "graduate assistantships, Hire Illini job board, work hour limits"
+    # NEW, narrow topic (Source Manifest V2 lists only 9 documents under it): registrar
+    # billing/fee pages specifically, split out of the old FINANCIAL_AID description above so a
+    # broad "how do I pay for college" query still lands on FINANCIAL_AID_SCHOLARSHIPS (the much
+    # more common ask) while a specific billing/refund query has somewhere precise to go.
+    Topic.FINANCIAL_AID_COSTS: (
+        "tuition and fee rates, registrar billing, refunds of registration "
+        "charges, tuition waivers and fee exemptions, and withdrawal refund policies"
     ),
-    # "ISSS" spelled out deliberately in the description text -- same
-    # bare-acronym pattern as OPT above: 0.572 without it, below threshold.
-    # "pre-arrival preparation and check-in" added in the
-    # REGISTRATION-attractor follow-up round: "What should international
-    # students do before they arrive on campus?" was losing to
-    # Topic.ADMISSIONS, which shares "new"/"incoming student" wording.
-    # "campus resources specifically for international students" added in
-    # a later 39-xfail follow-up round: "What resources are available for
-    # international students on campus?" was separately losing to
-    # Topic.HOUSING/DINING purely off the generic "on campus" phrase.
-    Topic.INTERNATIONAL_STUDENT_SERVICES: (
-        "international student services and support, "
-        "ISSS (International Student and Scholar Services), pre-arrival "
-        "preparation and check-in, and campus resources specifically for "
-        "international students"
+    Topic.CAREER_EMPLOYMENT: (
+        "career services offered by the Career Center: resume and cover "
+        "letter review, interview prep, career coaching, and job and "
+        "internship search help, plus on-campus jobs, work study, student "
+        "employment, applying for graduate assistantships, Hire Illini job "
+        "board, and work hour limits"
     ),
-    # "SEVIS" added in the REGISTRATION-attractor follow-up round: "What is
-    # SEVIS and why does it matter?" scored 0.487, below the clarification
-    # threshold, with no SEVIS-specific wording anywhere in the taxonomy.
-    Topic.VISA: (
-        "visa status, I-20, SEVIS (Student and Exchange Visitor "
-        "Information System) record, immigration documents"
+    Topic.INTERNATIONAL_STUDENTS_IMMIGRATION: (
+        "international student services and support, ISSS (International "
+        "Student and Scholar Services), pre-arrival preparation and "
+        "check-in, campus resources specifically for international "
+        "students, visa status, I-20, SEVIS (Student and Exchange Visitor "
+        "Information System) record, immigration documents, curricular "
+        "practical training (CPT) work authorization, what is CPT, and "
+        "optional practical training (OPT) work authorization after "
+        "graduation, what is OPT"
     ),
-    Topic.CPT: "curricular practical training, CPT work authorization",
-    # "what is OPT" is deliberately in the description text, not just
-    # "optional practical training": bare acronym questions like "What is
-    # OPT?" scored 0.50 (below the 0.55 threshold) without it, incorrectly
-    # triggering an ambiguous-topic clarification instead of answering --
-    # found via the golden-set eval (app/evaluation/golden_set.py).
-    Topic.OPT: "what is OPT, optional practical training, OPT work authorization after graduation",
     Topic.TECHNOLOGY_SERVICES: "campus technology, wifi, email, IT help desk",
-    # "study room reservations" added in a 39-xfail follow-up round: "Can I
-    # reserve a study room in the library?" was losing to Topic.HOUSING
-    # purely off generic wording, with nothing study-room-specific to
-    # compete with it. An earlier wording ("reserving a study room")
-    # regressed "Where do I buy textbooks?" and "How do I reset my
-    # university password?" by pulling too much weight toward LIBRARIES;
-    # this phrasing didn't.
     Topic.LIBRARIES: "university library hours, services, locations, and study room reservations",
-    # Built up incrementally from real sweep failures, each phrase added
-    # for a specific query that scored below its competitor without it:
-    # "MTD bus passes/fares" (bare-acronym pattern, same as OPT/ISSS above)
-    # for "How much does an MTD bus pass cost?"; "permit renewals, tickets
-    # and appeals" and "real-time bus tracking" for "How do I renew my
-    # parking permit?" / "...appeal a parking ticket?" / "...track the
-    # campus bus in real time?", all of which had regressed to
-    # Topic.REGISTRATION or Topic.CAMPUS_SAFETY once other topics'
-    # descriptions elsewhere got more specific and stopped acting as
-    # generic attractors themselves.
-    #
-    # That version (a comma-separated list of narrow parking/bus phrases
-    # plus a bare "Willard Airport") then regressed on a *retest* sweep: 5
-    # airport/intercity-travel queries that previously classified correctly
-    # ("...O'Hare Airport to UIUC...", "...cheapest way...from Chicago?",
-    # "...parking rates on campus?", "...shuttle to the airport?",
-    # "...Midway Airport to campus?") started losing to
-    # Topic.ADMISSIONS/DINING/HOUSING instead. Root cause: the added
-    # parking/ticket/bus-tracking phrases were specific enough to dominate
-    # the embedding, diluting the airport/intercity-travel signal down to a
-    # single under-weighted proper noun.
-    #
-    # Fixed by rewriting as one coherent sentence ("getting around campus
-    # and to/from campus: ...") instead of a growing list of bolted-on
-    # phrases, and naming Chicago/O'Hare/Midway explicitly instead of
-    # relying on "Willard Airport" alone to imply intercity travel. Verified
-    # via a comprehensive check across all 23 queries accumulated from every
-    # fix made this session (not just the 5 that regressed): 0 failures,
-    # including "Does UIUC have its own airport?" which a previous version
-    # of this description could never pass at the same time as the
-    # permit/ticket/bus-tracking queries.
-    # "whether you need a car as a student" and "campus bike share" added in
-    # the REGISTRATION-attractor follow-up round: "Do I need a car as a
-    # UIUC student?" and "Does UIUC have a bike share program?" were both
-    # losing to Topic.ADMISSIONS purely off "as a ... student"/"UIUC"
-    # wording, with nothing car- or bike-specific to compete with it.
-    Topic.TRANSPORTATION: (
+    Topic.TRANSPORTATION_PARKING: (
         "getting around campus and to/from campus: parking permits and tickets, "
         "MTD buses, whether you need a car as a student, campus bike share, "
         "Willard Airport, and traveling from Chicago or O'Hare/Midway airports"
     ),
-    # "waiving or opting out" deliberately in the description text: a real
-    # 200-question sweep found "Can I opt out of the mandatory health
-    # insurance?" misclassified as Topic.OPT (0.644 vs 0.637, a near-tie)
-    # purely from "opt" surface-overlapping OPT's description, retrieving a
-    # completely unrelated MTD privacy-policy chunk. Re-verified this
-    # description change alone fixes the near-tie (0.82 vs 0.64) without
-    # weakening real OPT queries ("How do I apply for OPT?" stays 0.70 vs
-    # 0.59).
-    # "seeing a doctor... McKinley Health Center" deliberately added too:
-    # raised "Where do I go for a doctor's appointment on campus?" from
-    # 0.533 to 0.643, though not quite enough -- Topic.DINING wins that
-    # specific query at 0.650 for reasons unrelated to either description
-    # (no dining-specific wording in the query at all). Left as a real,
-    # documented residual limitation rather than chasing a third
-    # competitor's description -- see docs/production-readiness.md-style
-    # honesty: this genuinely helps grounding for other doctor/McKinley
-    # phrasings even though it didn't flip this exact one.
-    # "for both undergraduate and graduate students" and "flu shots" added in
-    # the REGISTRATION-attractor follow-up round: "Does UIUC offer graduate
-    # student health insurance?" was losing to Topic.ADMISSIONS (which
-    # mentions "graduate" admission), and "Where can I get a flu shot on
-    # campus?" was losing to Topic.DINING on generic "on campus" wording.
-    Topic.HEALTH_INSURANCE: (
+    # "counseling and mental health support" added on the HEALTH_INSURANCE -> HEALTH_WELLNESS
+    # rename: Source Manifest V2's Health & Wellness topic (97 documents, up from 92 under the
+    # old, narrower Health Insurance topic) explicitly includes Counseling Center content that
+    # had no representation in the description before.
+    Topic.HEALTH_WELLNESS: (
         "student health insurance and health services for both "
         "undergraduate and graduate students, waiving or opting out of the "
-        "mandatory health insurance plan, seeing a doctor, flu shots, or "
-        "medical appointments at McKinley Health Center"
+        "mandatory health insurance plan, seeing a doctor, flu shots, "
+        "medical appointments at McKinley Health Center, and counseling "
+        "and mental health support"
     ),
-    # "intramural sports" and "the climbing wall" added in the
-    # REGISTRATION-attractor follow-up round: both were losing to
-    # Topic.STUDENT_ORGANIZATIONS (registered clubs), a related but
-    # distinct concept, with nothing recreation-specific to compete with it.
-    # Bare "pool" added right after "gym" in a later 39-xfail follow-up
-    # round: "Does the campus have a swimming pool?" was losing to
-    # Topic.HOUSING. Longer phrasings ("an indoor swimming pool") were
-    # tried first and rejected -- they diluted the description enough to
-    # cost "Can I rent kayaks...from the rec center?" to Topic.TRANSPORTATION
-    # instead; the single bare word didn't.
     Topic.CAMPUS_RECREATION: (
         "gym, pool, fitness facilities, recreation center membership, "
         "intramural sports, and the climbing wall"
     ),
-    Topic.STUDENT_ORGANIZATIONS: "student clubs and registered student organizations",
-    # "winter break dates" added in a 39-xfail follow-up round: "When does
-    # winter break start and end?" scored 0.541, just below the
-    # clarification threshold. A plain "winter break" (no "dates" suffix)
-    # regressed two Dining Dollars/semester-rollover questions to
-    # Topic.ACADEMIC_CALENDAR instead.
-    Topic.ACADEMIC_CALENDAR: (
-        "the academic calendar, semester dates, winter break dates, and add/drop deadlines"
+    Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT: "student clubs and registered student organizations",
+    Topic.ACADEMIC_CALENDAR_GRADUATION: (
+        "the academic calendar, semester dates, winter break dates, and "
+        "add/drop deadlines, plus graduation and commencement: ceremony "
+        "schedules, caps and gowns, diplomas, and conferral dates"
     ),
-    Topic.COURSE_REGISTRATION: "registering for classes, course registration",
-    # "Illini-Alert emergency notifications" added in the
-    # REGISTRATION-attractor follow-up round: "How do I sign up for
-    # Illini-Alert emergency notifications?" was losing to
-    # Topic.STUDENT_EMPLOYMENT purely off "sign up" wording, with no
-    # Illini-Alert-specific phrase to compete with it.
+    # NEW topic. Source Manifest V2 splits what the old COURSE_REGISTRATION topic covered into
+    # two: this one (registrar-side course/grade mechanics -- Course Explorer, GPA, grades,
+    # auditing, general education requirements, Graduate College general info) and
+    # CAMPUS_SERVICES_FACILITIES below (the actual per-department course catalog listings).
+    # Genuinely ambiguous case, flagged rather than hidden: a query like "what classes does the
+    # History department offer" could plausibly land on either topic -- this is a real,
+    # unresolved edge documented here rather than claimed away, same honesty convention as the
+    # residual limitations noted elsewhere in this file.
+    Topic.ACADEMICS: (
+        "checking your grades, calculating your GPA, auditing a course, "
+        "general education requirements by category, using Course "
+        "Explorer to browse class schedules and sections, and general "
+        "information about the Graduate College"
+    ),
     Topic.CAMPUS_SAFETY: (
         "campus police, emergency contacts, Illini-Alert emergency "
         "notifications, safety escorts, and crime reporting"
     ),
-    # Added after the domain-only crawler (app/ingestion/crawl_seeds.py) hit
-    # dres.illinois.edu (Disability Resources and Educational Services) and,
-    # with no accessibility-specific topic to embed against, misclassified
-    # most of its pages as international_student_services -- confirmed via a
-    # live crawl smoke test. topic is a hard retrieval filter
-    # (VectorRepository._build_filter), so a wrong topic here doesn't just
-    # mislabel a page, it hides it from accessibility queries entirely and
-    # pollutes results for whatever topic it got misclassified into.
-    # "registering with DRES" added in a 39-xfail follow-up round: "Do I
-    # need a doctor's note to register with DRES?" was losing to
-    # Topic.REGISTRATION purely off the word "register" -- despite the
-    # irony of adding register-adjacent wording to fix a REGISTRATION-
-    # attractor case, this fixed it cleanly with zero regressions
-    # (verified against the full 306-case suite) and, as a bonus, also
-    # fixed "Do libraries offer virtual reality resources?" which had been
-    # losing to this topic's old, more generic wording.
-    Topic.ACCESSIBILITY: (
+    Topic.ACCESSIBILITY_DISABILITY_SUPPORT: (
         "disability accommodations, accessibility services, registering "
         "with DRES, note-taking and testing accommodations for students "
         "with disabilities"
     ),
-    # Added after a live run found "what career services does UIUC offer"
-    # misclassified as international_student_services -- with no
-    # career-specific description to embed against, "career" pulled toward
-    # whichever topic happened to be closest. Deliberately distinguished
-    # from STUDENT_EMPLOYMENT (on-campus jobs/work-study) since "career
-    # coaching" and "resume review" are a different service from "I need a
-    # job on campus," even though both live under The Career Center.
-    #
-    # Rewritten in the REGISTRATION-attractor follow-up round: the original
-    # wording still lost the bare query "What career services does UIUC
-    # offer?" to Topic.ADMISSIONS (a nearly identical phrasing with "like
-    # resume help" appended passed, showing the classification was fragile
-    # to small wording changes). Restructured to lead with "career services
-    # offered by the Career Center" as one coherent clause instead of a
-    # comma-list starting with the bare, generic word "career" -- fixed
-    # with zero regressions against the full 306-case suite.
-    Topic.CAREER_SERVICES: (
-        "career services offered by the Career Center: resume and cover "
-        "letter review, interview prep, career coaching, and job and "
-        "internship search help"
+    # NEW topic. Source Manifest V2 groups two previously separate kinds of content here: (a)
+    # per-department course catalog listings (e.g. "AE - Aerospace Engineering" course
+    # descriptions) -- distinct from ACADEMICS' Course Explorer/grades content above, see that
+    # entry's comment -- and (b) Illini Union / campus bookstore / i-card / campus map pages,
+    # which the previous taxonomy had no dedicated home for and which a known corpus-hygiene
+    # issue (see project memory) had leaking into ADMISSIONS instead.
+    Topic.CAMPUS_SERVICES_FACILITIES: (
+        "course descriptions and offerings by academic department or "
+        "subject in the course catalog, general degree and curriculum "
+        "policy information, and campus facilities and services: the "
+        "Illini Union building, buying textbooks and the campus bookstore, "
+        "i-card student ID services, and campus maps"
     ),
-    # Added after a live run found "how do I contact my academic advisor"
-    # misclassified as academic_calendar -- same root cause as
-    # CAREER_SERVICES above, no dedicated topic to embed against.
     Topic.ACADEMIC_ADVISING: (
         "academic advising, contacting or scheduling with your academic advisor, "
         "degree planning, course selection help"
@@ -333,128 +163,145 @@ _TOPIC_DESCRIPTIONS: dict[Topic, str] = {
 
 # Additional short, narrow exemplar phrases for topics whose single
 # _TOPIC_DESCRIPTIONS entry can't be tuned any further without regressing
-# something else -- confirmed live via the 306-case regression suite for
-# ADMISSIONS, ACADEMIC_CALENDAR, FINANCIAL_AID, SCHOLARSHIPS, and
-# COURSE_REGISTRATION, each of which resisted every wording-level fix
-# attempted across three separate rounds (see topic_regression_set.py's
-# module docstring).
+# something else -- confirmed live via the (pre-migration) 306-case
+# regression suite for ADMISSIONS, ACADEMIC_CALENDAR_GRADUATION,
+# FINANCIAL_AID_SCHOLARSHIPS, and REGISTRATION_RECORDS/ACADEMICS (formerly
+# COURSE_REGISTRATION), each of which resisted every wording-level fix
+# attempted across three separate rounds under the old taxonomy (see
+# topic_regression_set.py's module docstring). Carried over and remapped to
+# the new topic keys.
 #
 # A topic's match score is the MAX cosine similarity across its primary
 # description (above) plus all of its exemplars here, not their average or
 # a re-embedded concatenation -- so an exemplar added for one narrow query
 # can't dilute the primary description's match strength for that topic's
 # other, already-passing queries the way editing the description text
-# directly always risked. Each exemplar below was still added and
-# verified one at a time against the full regression suite, the same
-# zero-new-regressions discipline as description edits: a topic having
-# *more* vectors to match against still means it wins on strictly more
-# queries than before, so an exemplar that's too broad can still create a
-# new attractor exactly like an over-broad description would.
+# directly always risked.
 _TOPIC_EXEMPLARS: dict[Topic, tuple[str, ...]] = {
-    # First use of this mechanism, added in a follow-up round after
-    # ADMISSIONS, ACADEMIC_CALENDAR, FINANCIAL_AID, SCHOLARSHIPS, and
-    # COURSE_REGISTRATION had each resisted every _TOPIC_DESCRIPTIONS
-    # wording change attempted across three separate rounds (see
-    # topic_regression_set.py's module docstring) -- editing one shared
-    # description string always risked diluting that same topic's other,
-    # already-passing queries. Exemplars don't have that failure mode
-    # (each is scored independently, and a topic's score is the MAX across
-    # all of them), but adding one is still not risk-free: a topic having
-    # more vectors to match against can create a new attractor for
-    # unrelated queries exactly the way an over-broad description would,
-    # so every exemplar below was still added and verified one at a time
-    # against the full 306-case regression suite, zero-new-regressions bar.
-    #
-    # Fixed 18 of 29 remaining xfails this round, including several in
-    # COURSE_REGISTRATION -- previously the single most fragile topic in
-    # the taxonomy under description edits (even one added word reliably
-    # caused 2-4 new regressions), but exemplars fixed 4 of its cases
-    # cleanly. The 11 cases that remain xfail after this round were each
-    # attempted multiple times (up to 7-8 wording variants for the
-    # hardest ones) and kept causing new regressions regardless of
-    # phrasing -- these appear to be genuine equilibrium points in the
-    # embedding space, not just under-explored wording, and four of them
-    # (queries that should trigger clarification, not a topic match) are
-    # structurally unfixable by this mechanism at all: exemplars only ever
-    # add matching power to a topic, so they can raise a topic's own
-    # recall but can never suppress another topic's false-positive score
-    # on a vague or off-topic message.
-    Topic.FINANCIAL_AID: (
+    Topic.FINANCIAL_AID_SCHOLARSHIPS: (
         "when is the FAFSA due each year",
         "using the net price calculator to estimate cost",
         "what is a federal Pell Grant",
         "tuition waivers that cover part of your tuition bill",
+        "merit awards available to first-year students right out of high school",
+        "automatic merit scholarships freshmen receive upon admission",
+        "merit awards set aside specifically for transfer students",
+        # Regressed once this topic's exemplar list above (already a merge of the old
+        # FINANCIAL_AID and SCHOLARSHIPS topics) had to compete against several other topics'
+        # newly-merged, longer descriptions too -- same dilution pattern as elsewhere in this
+        # migration.
+        "checking the current status of your financial aid award",
+        "whether international students are eligible for any financial aid",
+        "the deadline to submit a scholarship application",
     ),
     Topic.HOUSING: (
         "packing and moving into your dorm room for the first time",
         "single-occupancy dorm rooms and the extra fee for a private room",
         "getting released from your dorm residency agreement",
     ),
-    Topic.SCHOLARSHIPS: (
-        "merit awards available to first-year students right out of high school",
-        "automatic merit scholarships freshmen receive upon admission",
-        "merit awards set aside specifically for transfer students",
-    ),
     Topic.ADMISSIONS: (
         "admission selectivity and acceptance rates by department",
         "acceptance rates and selectivity for different academic colleges within UIUC",
         "what transcripts and test scores to submit for a graduate school application",
         "applying under an early action plan versus the regular decision timeline",
-        # Added after a live 200-question sweep (run against the deployed
-        # app, not just the regression suite) caught a real regression the
-        # suite's 306 cases didn't cover: "I'm a junior transferring in,
-        # what's my GPA cutoff?" had flipped from correctly ADMISSIONS to
-        # SCHOLARSHIPS once that topic gained a "transfer students"
-        # exemplar in the prior round -- both matched on "transfer(ring)"
-        # alone. This exemplar was added to the regression suite too, so
-        # future rounds catch a repeat of this specific collision offline.
         "the minimum GPA cutoff to transfer in as a junior",
-        # Found via a live 326-question sweep (a raw-chunk-dump generation
-        # bug had been masking this regression until now): "What are the
-        # transfer application deadlines?" scored SCHOLARSHIPS 0.6822 vs
-        # ADMISSIONS 0.6764 -- SCHOLARSHIPS' "scholarship application
-        # deadlines" phrasing (added for a different query) shares the same
-        # "[X] application deadlines" structure and out-scored ADMISSIONS'
-        # own "deadlines" wording on this near-tie. A first attempt at this
-        # exemplar ("the deadline to submit a transfer application to
-        # UIUC") fixed the target but regressed 2 unrelated cases (bike
-        # share, add/drop deadline) by being too generic on
-        # "deadline"/"application"; this more specific phrasing (naming
-        # "admission" and both terms explicitly) fixes the target with zero
-        # regressions across the full 307-case suite.
         "fall and spring transfer admission application deadlines",
     ),
     Topic.ACADEMIC_ADVISING: (
         "the paperwork to officially declare or switch your major within LAS",
     ),
-    Topic.COURSE_REGISTRATION: (
+    Topic.ACADEMICS: (
         "using the course explorer tool to plan out your class schedule",
+        "how many times you're allowed to retake a class you previously failed",
+        "auditing a course instead of taking it for a grade",
+    ),
+    # Regressed once this topic's description merged the old ACADEMIC_CALENDAR content with
+    # graduation/commencement content into one longer string -- semester-date-specific queries
+    # (with no graduation-related wording to anchor them) started losing to ADMISSIONS,
+    # ORIENTATION_NEW_STUDENTS, and REGISTRATION_RECORDS instead.
+    Topic.ACADEMIC_CALENDAR_GRADUATION: (
+        "the specific dates fall break falls on this academic year",
+        "what day the spring semester officially ends",
+        "whether there's a reading day scheduled before final exams begin",
+        "when final grades get posted after finals week is over",
+        "the first day of classes for the fall semester",
+        # Deliberately just "what the add/drop deadline is" -- a closer paraphrase ("the last
+        # day you're allowed to add or drop a class without penalty") was tried and reverted: it
+        # collided with two REGISTRATION_RECORDS-expected cases about the same add/drop mechanic
+        # phrased slightly differently ("What's the last day to drop a class without a W?",
+        # "What's the penalty for a late add/drop request?"), a genuinely close pair the new
+        # taxonomy splits by intent (calendar deadline vs. registration mechanics) that this
+        # embedding-similarity approach can't always disambiguate -- documented as a residual in
+        # topic_regression_set.py rather than chased further.
+        "what the add/drop deadline is",
+    ),
+    # Regressed for the same reason as CAMPUS_SERVICES_FACILITIES's other content diluting
+    # this topic's course-catalog wording (see topic_classifier.py's comment on that topic's
+    # ambiguity with ACADEMICS): "Where can I find the course catalog?" was losing to ACADEMICS
+    # instead, whose Course Explorer/grades wording is a near-neighbor concept.
+    Topic.CAMPUS_SERVICES_FACILITIES: (
+        "finding the official course catalog listing for a specific academic department",
+    ),
+    # "How do I check my registration appointment time?" and "Can I skip New Student
+    # Registration if I've already registered for classes?" regressed when this topic's
+    # description grew to merge the old REGISTRATION and COURSE_REGISTRATION content into one
+    # longer string -- same dilution failure mode as CAREER_EMPLOYMENT below. A third exemplar
+    # tried here ("whether you have to attend orientation before you're able to register for
+    # classes") was reverted: it fixed its one target case but broke 7 separate
+    # ORIENTATION_NEW_STUDENTS cases by sharing too much "orientation" wording with them --
+    # exactly the over-broad-exemplar risk this file's docs warn about, not worth the trade.
+    Topic.REGISTRATION_RECORDS: (
         "dropping a class late enough that it leaves a W mark instead of "
         "disappearing from your record",
         "voluntarily blocking yourself from registering for classes",
+        "requesting a leave of absence to step away from your studies for a term",
+        "checking your assigned time slot to register for classes",
+        "whether completing New Student Registration is different from registering for classes",
     ),
-    # Both added not because TECHNOLOGY_SERVICES itself needed them, but
-    # because these two exact queries kept getting stolen by whatever
-    # exemplar was being tested on a *different* topic (REGISTRATION,
-    # ADMISSIONS) during this round -- anchoring them here first, before
-    # retrying the other topic's exemplar, is what let those succeed.
     Topic.TECHNOLOGY_SERVICES: (
         "resetting a forgotten NetID or university account password",
         "getting a replacement student identification card after losing yours",
     ),
-    Topic.REGISTRATION: (
-        "requesting a leave of absence to step away from your studies for a term",
-    ),
-    # Added for the same reason as the TECHNOLOGY_SERVICES pair above --
-    # anchoring this query here is what let ADMISSIONS' graduate-
-    # application-documents exemplar succeed without stealing it.
-    Topic.STUDENT_EMPLOYMENT: (
+    Topic.CAREER_EMPLOYMENT: (
         "finding and interviewing for an open graduate assistantship position in a department",
+        # Regression found when this topic's description grew to merge the old CAREER_SERVICES
+        # and STUDENT_EMPLOYMENT content into one longer string: "How many hours can I work as a
+        # student employee?" started losing to REGISTRATION_RECORDS without this exemplar.
+        "the maximum number of hours a student employee is allowed to work per week",
+        # Four further exemplars (resume review, on-campus job search, work study, international
+        # student work eligibility, financial-aid interaction) were tried here and reverted:
+        # each fixed its own one target query but collectively turned this topic into an
+        # over-broad attractor that started winning several unrelated queries instead ("How do I
+        # apply for on-campus housing?", "How do I apply for financial aid?", "Does the
+        # university offer peer tutoring?" all started losing to CAREER_EMPLOYMENT once those
+        # exemplars were added). Reverted as net-negative rather than kept -- see
+        # topic_regression_set.py for the resulting documented residuals.
     ),
-    Topic.ORIENTATION: ("is attending Welcome Week mandatory before you can pick your classes",),
-    Topic.INTERNATIONAL_STUDENT_SERVICES: (
+    Topic.ORIENTATION_NEW_STUDENTS: (
+        "is attending Welcome Week mandatory before you can pick your classes",
+    ),
+    # This topic's description merged four previously-separate, individually-tuned descriptions
+    # (VISA, CPT, OPT, INTERNATIONAL_STUDENT_SERVICES) into one -- by far the largest merge in
+    # this migration. An initial batch of 14 exemplars (one per CPT/OPT/SEVIS/I-20/visa-mechanics
+    # query that regressed) fixed all of those but turned this topic into an over-broad attractor
+    # that started winning 8+ unrelated queries across other topics instead (career coaching,
+    # on-campus jobs, IT help, parking permits, health insurance, academic advising, dining --
+    # see topic_regression_set.py's xfail_reason entries for the full list). Trimmed down to just
+    # the three VISA-subtopic exemplars, which fixed their targets without detectable collateral
+    # damage against the full suite; the CPT/OPT-specific ones were reverted as net-negative --
+    # those queries still get a plausible (if imprecise) answer via this topic's own CPT/OPT
+    # wording in the description above, or are documented as residuals.
+    Topic.INTERNATIONAL_STUDENTS_IMMIGRATION: (
         "the ISSS pre-departure checklist of items to bring to the US as a "
         "new international student",
+        "what to do if there's an error on your I-20 form",
+        "what SEVIS is and why it matters for your immigration status",
+        "whether your visa expires if you stay in the US past your program end date",
+        # "what is CPT" alone scored 0.543 (just under the 0.55 threshold) found via the golden
+        # set (app/evaluation/golden_set.py's international_cpt case), same bare-acronym pattern
+        # as "what is OPT" already in the description above -- given its own exemplar rather than
+        # folded into the (already long) description, so it isn't diluted by the rest of it.
+        "what is CPT",
     ),
 }
 
@@ -497,7 +344,18 @@ def _topic_embeddings() -> dict[Topic, list[list[float]]]:
 class TopicClassifier:
     """Classifies a message into a Topic by embedding similarity, with a
     confidence score the caller uses to decide whether to trust it or ask
-    for clarification instead of guessing."""
+    for clarification instead of guessing.
+
+    Deliberately predicts only the top-level Topic, not a (topic, subtopic)
+    pair -- Document.subtopic (Source Manifest V2's category-level
+    subtopic, e.g. "OPT" under INTERNATIONAL_STUDENTS_IMMIGRATION) is set
+    only by SourceConfig entries and scripts/remap_topics_v2.py's
+    department/URL heuristics, not predicted here. Doubling this
+    classifier to also predict subtopic would meaningfully increase its
+    tuning surface for a feature nothing downstream currently reads
+    subtopic for at query time (see app/graph/nodes.py -- retrieval
+    filters only ever key on topic).
+    """
 
     def __init__(
         self, *, confidence_threshold: float = 0.55, embedder: Embedder | None = None

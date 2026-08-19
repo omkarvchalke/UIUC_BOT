@@ -5,6 +5,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.ingestion.chunk_identity import compute_chunk_id
 from app.ingestion.chunking import ChunkResult
 from app.models.conversation_session import StudentType
 from app.models.document import (
@@ -13,9 +14,12 @@ from app.models.document import (
     DocumentChunk,
     DocumentType,
     DocumentVersion,
+    IndexStatus,
+    SourceRole,
     SourceType,
     Topic,
 )
+from app.retrieval.priority import compute_authority_score, compute_retrieval_priority
 
 
 class DocumentRepository:
@@ -62,7 +66,18 @@ class DocumentRepository:
         document_type: DocumentType | None = None,
         keywords: tuple[str, ...] = (),
         last_crawled_at: datetime | None = None,
+        subtopic: str | None = None,
+        source_role: SourceRole | None = None,
+        http_status: int | None = None,
+        word_count: int | None = None,
     ) -> Document:
+        # authority_score/retrieval_priority are always (re-)computed here, never passed in --
+        # see app/retrieval/priority.py's module docstring for why they're derived rather than
+        # accepted as raw input. retrieval_priority depends on temporal_scope, which isn't part
+        # of the normal ingestion flow (set separately -- see scripts/remap_topics_v2.py), so a
+        # new document computes it with temporal_scope=None (the same as "unspecified") and an
+        # existing document keeps whatever temporal_scope it already has.
+        authority_score = compute_authority_score(source_type)
         document = await self.get_by_url(url)
         if document is None:
             document = Document(
@@ -70,7 +85,9 @@ class DocumentRepository:
                 title=title,
                 department=department,
                 topic=topic,
+                subtopic=subtopic,
                 source_type=source_type,
+                source_role=source_role,
                 student_types=list(student_types),
                 audience=list(audience),
                 document_type=document_type,
@@ -78,6 +95,11 @@ class DocumentRepository:
                 last_updated=last_updated,
                 last_crawled_at=last_crawled_at,
                 content_hash=content_hash,
+                authority_score=authority_score,
+                retrieval_priority=compute_retrieval_priority(source_role, None),
+                index_status=IndexStatus.APPROVED,
+                http_status=http_status,
+                word_count=word_count,
             )
             self._db.add(document)
         else:
@@ -110,7 +132,9 @@ class DocumentRepository:
             document.title = title
             document.department = department
             document.topic = topic
+            document.subtopic = subtopic
             document.source_type = source_type
+            document.source_role = source_role
             document.student_types = list(student_types)
             document.audience = list(audience)
             document.document_type = document_type
@@ -118,6 +142,16 @@ class DocumentRepository:
             document.last_updated = last_updated
             document.last_crawled_at = last_crawled_at
             document.content_hash = content_hash
+            document.authority_score = authority_score
+            document.retrieval_priority = compute_retrieval_priority(
+                source_role, document.temporal_scope
+            )
+            # index_status is deliberately NOT reset here -- a human may have manually blocked
+            # or flagged this document for review (Source Manifest V2, Part 7), and a routine
+            # re-crawl must not silently un-block it. Only scripts/remap_topics_v2.py or a
+            # future moderation tool should change index_status on an existing document.
+            document.http_status = http_status
+            document.word_count = word_count
 
         await self._db.flush()
         await self._db.refresh(document)
@@ -146,16 +180,33 @@ class DocumentRepository:
         await self._db.execute(
             delete(DocumentChunk).where(DocumentChunk.document_id == document_id)
         )
+        # local_index (0-based position within this chunk's own section, for compute_chunk_id)
+        # tracked separately from `number` (1-based across the whole document, unchanged
+        # meaning) -- resets to 0 every time section_index changes.
+        local_index = 0
+        previous_section_index: int | None = None
         for number, chunk in enumerate(chunks, start=1):
+            if chunk.section_index != previous_section_index:
+                local_index = 0
+                previous_section_index = chunk.section_index
             self._db.add(
                 DocumentChunk(
+                    id=compute_chunk_id(
+                        document_id,
+                        section_index=chunk.section_index,
+                        local_index=local_index,
+                        content=chunk.text,
+                    ),
                     document_id=document_id,
                     chunk_number=number,
                     content=chunk.text,
                     char_count=len(chunk.text),
                     subtopic=chunk.subtopic,
+                    section_index=chunk.section_index,
+                    parent_text=chunk.parent_text,
                 )
             )
+            local_index += 1
         await self._db.commit()
 
     async def list_documents_needing_index(self) -> list[Document]:
@@ -169,11 +220,15 @@ class DocumentRepository:
         )
         return list(result.scalars().all())
 
-    async def mark_indexed(self, document_id: uuid.UUID, content_hash: str) -> None:
+    async def mark_indexed(
+        self, document_id: uuid.UUID, content_hash: str, *, embedding_version: str | None = None
+    ) -> None:
         document = await self.get_by_id(document_id)
         if document is None:
             return
         document.embedded_content_hash = content_hash
+        if embedding_version is not None:
+            document.embedding_version = embedding_version
         await self._db.commit()
 
     async def set_chunk_embeddings(

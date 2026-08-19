@@ -44,6 +44,9 @@ def test_expected_entry_counts() -> None:
     # one of these numbers. 71 -> 76: 5 sources deliberately added after a
     # web-research pass to address a real topic-imbalance finding (Topic.
     # VISA/ACADEMIC_ADVISING had very few real documents) -- see
-    # international_services.py and academics_curriculum.py.
+    # international_services.py and academics_curriculum.py. 76 -> 78: two
+    # anchor sources added for the Source Manifest V2 migration's brand-new
+    # ACADEMICS/FINANCIAL_AID_COSTS topics -- see registration_records.py
+    # and financial_aid_billing.py.
     assert len(domains.ALL_SEEDS) == 35
-    assert len(domains.ALL_SOURCES) == 76
+    assert len(domains.ALL_SOURCES) == 78

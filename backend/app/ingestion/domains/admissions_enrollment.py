@@ -76,7 +76,7 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://newstudent.illinois.edu/orientation",
         department="New Student & Family Experiences",
-        topic=Topic.ORIENTATION,
+        topic=Topic.ORIENTATION_NEW_STUDENTS,
         source_type=SourceType.HTML,
         fallback_title="Orientation",
         student_types=(StudentType.FRESHMAN, StudentType.TRANSFER),
@@ -148,7 +148,7 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://newstudent.illinois.edu/orientation/NSR",
         department="New Student & Family Experiences",
-        topic=Topic.ORIENTATION,
+        topic=Topic.ORIENTATION_NEW_STUDENTS,
         source_type=SourceType.HTML,
         fallback_title="New Student Registration",
         student_types=(StudentType.FRESHMAN, StudentType.TRANSFER),
@@ -165,10 +165,16 @@ SOURCES: tuple[SourceConfig, ...] = (
     # citations -- the financial_aid_billing domain's OSFA/Bursar sources
     # cover aid and billing mechanics but not the actual in-state/
     # out-of-state tuition rate figures, which live here instead.
+    #
+    # Topic.ADMISSIONS, not a financial-aid topic: Source Manifest V2 classifies this exact URL
+    # (admissions.illinois.edu/invest/tuition) under Admissions, not either financial-aid topic
+    # -- followed here since V2 is authoritative for this migration, even though the content
+    # itself is tuition-rate information (the "why" comment above still explains why this page
+    # is sourced at all, independent of which topic it lands under).
     SourceConfig(
         url="https://www.admissions.illinois.edu/invest/tuition",
         department="Undergraduate Admissions",
-        topic=Topic.FINANCIAL_AID,
+        topic=Topic.ADMISSIONS,
         source_type=SourceType.HTML,
         fallback_title="Tuition (In-State & Out-of-State Rates)",
     ),

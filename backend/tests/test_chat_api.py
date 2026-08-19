@@ -116,7 +116,7 @@ async def test_chat_full_question_returns_grounded_answer_with_citations(
         url="https://example.illinois.edu/parking",
         title="Parking Permits",
         chunk_texts=["Students may purchase a parking permit through the Parking Department."],
-        topic=Topic.TRANSPORTATION,
+        topic=Topic.TRANSPORTATION_PARKING,
     )
     session_id = await _create_session(db_session_factory, student_type=StudentType.FRESHMAN)
 
@@ -133,13 +133,13 @@ async def test_chat_full_question_returns_grounded_answer_with_citations(
     assert body["citations"][0]["url"] == "https://example.illinois.edu/parking"
     assert isinstance(body["citations"][0]["fused_score"], float)
     assert "subtopic" in body["citations"][0]
-    assert body["topic"] == "transportation"
+    assert body["topic"] == "transportation_parking"
 
     async with db_session_factory() as session:
         events = await ChatTurnEventRepository(session).list_by_session(session_id)
         assert len(events) == 1
         assert events[0].intent is ChatTurnIntent.QUESTION
-        assert events[0].topic is Topic.TRANSPORTATION
+        assert events[0].topic is Topic.TRANSPORTATION_PARKING
         assert events[0].grounded is True
         assert events[0].citation_count == len(body["citations"])
         assert events[0].latency_ms is not None

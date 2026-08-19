@@ -81,7 +81,7 @@ async def test_submit_feedback_stores_topic_and_citations(
         "title": "F-1 CPT",
         "url": "https://isss.illinois.edu/students/employment/f1-cpt/",
         "department": "International Student and Scholar Services",
-        "topic": "cpt",
+        "topic": "international_students_immigration",
         "subtopic": None,
         "fused_score": 0.03,
         "rerank_score": 5.2,
@@ -96,7 +96,7 @@ async def test_submit_feedback_stores_topic_and_citations(
                 "question": "How can I file for CPT?",
                 "answer": "Submit the CPT application form to ISSS.",
                 "rating": "helpful",
-                "topic": "cpt",
+                "topic": "international_students_immigration",
                 "citations": [citation],
             },
         )
@@ -107,7 +107,7 @@ async def test_submit_feedback_stores_topic_and_citations(
     async with db_session_factory() as session:
         stored = await session.get(Feedback, feedback_id)
         assert stored is not None
-        assert stored.topic == "cpt"
+        assert stored.topic == "international_students_immigration"
         assert stored.citations == [citation]
 
 

@@ -44,7 +44,7 @@ async def test_count_turns_and_topic_distribution(
         await repo.create(
             session_id=conversation.id,
             intent=ChatTurnIntent.QUESTION,
-            topic=Topic.FINANCIAL_AID,
+            topic=Topic.FINANCIAL_AID_SCHOLARSHIPS,
             needs_clarification=True,
             grounded=None,
             citation_count=0,
@@ -71,7 +71,7 @@ async def test_count_turns_and_topic_distribution(
         assert await repo.clarification_rate() == 0.25
 
         distribution = dict(await repo.topic_distribution())
-        assert distribution == {Topic.HOUSING: 2, Topic.FINANCIAL_AID: 1}
+        assert distribution == {Topic.HOUSING: 2, Topic.FINANCIAL_AID_SCHOLARSHIPS: 1}
 
         avg_ms, p50_ms, p95_ms = await repo.latency_stats()
         assert avg_ms is not None

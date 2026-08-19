@@ -36,7 +36,7 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://studentengagement.illinois.edu/soda/studentorgs/registration",
         department="Student Engagement",
-        topic=Topic.STUDENT_ORGANIZATIONS,
+        topic=Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT,
         source_type=SourceType.HTML,
         fallback_title="Student Org Registration",
     ),

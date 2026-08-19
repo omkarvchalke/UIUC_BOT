@@ -35,11 +35,20 @@ class SemanticChunker:
             return [ChunkResult(text=text) for text in self._recursive.split(extracted.text)]
 
         results: list[ChunkResult] = []
-        for section in self._merge_small_sections(extracted.sections):
+        for section_index, section in enumerate(self._merge_small_sections(extracted.sections)):
             subtopic = self._subtopic_for(section.heading_path)
+            pieces = self._recursive.split(section.text)
+            # parent_text only set when the section didn't fit in one chunk -- see
+            # DocumentChunk.parent_text's docstring for why a 1:1 section->chunk keeps it null.
+            parent_text = section.text if len(pieces) > 1 else None
             results.extend(
-                ChunkResult(text=piece, subtopic=subtopic)
-                for piece in self._recursive.split(section.text)
+                ChunkResult(
+                    text=piece,
+                    subtopic=subtopic,
+                    section_index=section_index,
+                    parent_text=parent_text,
+                )
+                for piece in pieces
             )
         return results
 

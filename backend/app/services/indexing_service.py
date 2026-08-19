@@ -2,6 +2,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.embeddings.embedder import Embedder
 from app.models.document import Document
@@ -61,7 +62,11 @@ class IndexingService:
             return IndexResult(document.id, document.url, "failed", error=str(exc))
 
         await self._documents.set_chunk_embeddings(document.chunks, vectors)
-        await self._documents.mark_indexed(document.id, document.content_hash)
+        await self._documents.mark_indexed(
+            document.id,
+            document.content_hash,
+            embedding_version=get_settings().embedding_version,
+        )
 
         logger.info("indexing_document_indexed", url=document.url, chunk_count=len(vectors))
         return IndexResult(document.id, document.url, "indexed", chunk_count=len(vectors))

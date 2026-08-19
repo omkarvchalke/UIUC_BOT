@@ -20,7 +20,7 @@ async def _seed_and_index(db_session_factory: async_sessionmaker[AsyncSession]) 
             url="https://example.illinois.edu/parking",
             title="Parking and Transportation",
             department="Parking Department",
-            topic=Topic.TRANSPORTATION,
+            topic=Topic.TRANSPORTATION_PARKING,
             source_type=SourceType.HTML,
             student_types=(),
             last_updated=None,

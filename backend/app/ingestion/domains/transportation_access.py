@@ -61,14 +61,14 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://parking.illinois.edu/transportation",
         department="Parking Department",
-        topic=Topic.TRANSPORTATION,
+        topic=Topic.TRANSPORTATION_PARKING,
         source_type=SourceType.HTML,
         fallback_title="Transportation",
     ),
     SourceConfig(
         url="https://parking.illinois.edu/permits",
         department="Parking Department",
-        topic=Topic.TRANSPORTATION,
+        topic=Topic.TRANSPORTATION_PARKING,
         source_type=SourceType.HTML,
         fallback_title="Parking Permits",
     ),
@@ -90,7 +90,7 @@ SOURCES: tuple[SourceConfig, ...] = (
         # explicit allowlist this requires.
         url="https://mtd.org/",
         department="Champaign-Urbana Mass Transit District (MTD)",
-        topic=Topic.TRANSPORTATION,
+        topic=Topic.TRANSPORTATION_PARKING,
         source_type=SourceType.HTML,
         fallback_title="Champaign-Urbana Mass Transit District",
     ),
@@ -108,7 +108,7 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://isss.illinois.edu/students/pre-arrival/",
         department="International Student and Scholar Services",
-        topic=Topic.TRANSPORTATION,
+        topic=Topic.TRANSPORTATION_PARKING,
         source_type=SourceType.HTML,
         fallback_title="Getting to Champaign-Urbana (Pre-Arrival)",
     ),

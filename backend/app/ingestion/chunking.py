@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from app.models.document import SourceRole
+
 _DEFAULT_SEPARATORS = ("\n\n", "\n", ". ", " ", "")
 
 
@@ -9,6 +11,39 @@ class ChunkerConfig:
     chunk_overlap: int = 150
 
 
+def role_chunk_config(
+    role: SourceRole | None, *, chars_per_token: int, default: ChunkerConfig
+) -> ChunkerConfig:
+    """Role-aware chunk sizing (Source Manifest V2, Part 11). Target ranges are specified in
+    tokens there; converted to characters via `chars_per_token` (settings.chars_per_token,
+    default ~4 -- a documented approximation, since the pipeline has no tokenizer dependency and
+    adding one for this alone would be over-engineering per Part 21). `role=None` (role not
+    confidently known -- see SourceRole's REVIEW-is-null convention) falls back to `default`,
+    today's global config, rather than guessing a role.
+
+    Values below are (token_target, token_overlap) midpoints of Part 11's stated ranges.
+    """
+    if role is None:
+        return default
+
+    token_targets: dict[SourceRole, tuple[int, int]] = {
+        SourceRole.POLICY: (600, 87),
+        SourceRole.DEADLINE: (450, 62),
+        SourceRole.PROCEDURE: (600, 87),
+        SourceRole.COURSE: (400, 50),
+        SourceRole.PROGRAM: (600, 75),
+        SourceRole.SERVICE: (500, 62),
+        SourceRole.DIRECTORY: (325, 37),
+        SourceRole.NEWS: (500, 50),
+        SourceRole.REFERENCE: (600, 75),
+        SourceRole.HISTORICAL: (600, 75),
+    }
+    tokens, overlap_tokens = token_targets[role]
+    return ChunkerConfig(
+        chunk_size=tokens * chars_per_token, chunk_overlap=overlap_tokens * chars_per_token
+    )
+
+
 @dataclass(frozen=True)
 class ChunkResult:
     """One persisted chunk: its text plus the heading-derived section it
@@ -16,6 +51,11 @@ class ChunkResult:
 
     text: str
     subtopic: str | None = None
+    # Which merged Section (post small-section-merge) this chunk was split from, and that
+    # section's full un-split text -- see DocumentChunk.section_index/parent_text for why
+    # (Source Manifest V2, Part 14: parent/child chunking without a second table).
+    section_index: int = 0
+    parent_text: str | None = None
 
 
 class RecursiveCharacterChunker:

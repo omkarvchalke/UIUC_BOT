@@ -28,7 +28,7 @@ async def _seed(
             url=url,
             title=title,
             department="Test Department",
-            topic=Topic.CPT,
+            topic=Topic.INTERNATIONAL_STUDENTS_IMMIGRATION,
             source_type=SourceType.HTML,
             student_types=(),
             last_updated=None,

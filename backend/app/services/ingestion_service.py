@@ -8,7 +8,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.ingestion.chunking import ChunkerConfig
+from app.ingestion.chunking import ChunkerConfig, role_chunk_config
 from app.ingestion.extracted_document import ExtractedDocument
 from app.ingestion.fetch import FetchError, build_client, fetch_response, fetch_url
 from app.ingestion.html_loader import parse_html
@@ -62,13 +62,26 @@ class IngestionService:
         chunker: SemanticChunker | None = None,
     ) -> None:
         self._repository = repository
-        if chunker is not None:
-            self._chunker = chunker
-        else:
-            settings = get_settings()
-            self._chunker = SemanticChunker(
-                ChunkerConfig(chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap)
-            )
+        # An explicit chunker override (tests, scripts/backfill_semantic_chunks.py) always wins
+        # and is used for every source regardless of role. Otherwise a fresh, role-aware
+        # SemanticChunker is built per source in _chunker_for (see role_chunk_config) -- there's
+        # no single shared default chunker to fall back to once sizing depends on source_role.
+        self._chunker_override = chunker
+        settings = get_settings()
+        self._default_chunk_config = ChunkerConfig(
+            chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
+        )
+        self._chars_per_token = settings.chars_per_token
+
+    def _chunker_for(self, source: SourceConfig) -> SemanticChunker:
+        if self._chunker_override is not None:
+            return self._chunker_override
+        config = role_chunk_config(
+            source.source_role,
+            chars_per_token=self._chars_per_token,
+            default=self._default_chunk_config,
+        )
+        return SemanticChunker(config)
 
     async def ingest_source(
         self,
@@ -103,12 +116,15 @@ class IngestionService:
             # advisory). Reuse this response's body instead of fetching
             # the same URL a second time.
             raw_bytes = probe.content
+            http_status = probe.status_code
         else:
             try:
-                raw_bytes = await fetch_url(source.url, client=http_client)
+                response = await fetch_response(source.url, client=http_client)
             except FetchError as exc:
                 logger.warning("ingestion_fetch_failed", url=source.url, error=str(exc))
                 return IngestResult(url=source.url, status="failed", error=str(exc))
+            raw_bytes = response.content
+            http_status = response.status_code
 
         try:
             extracted = self._parse(source, raw_bytes)
@@ -141,6 +157,8 @@ class IngestionService:
             existing.title == title
             and existing.department == source.department
             and existing.topic == source.topic
+            and existing.subtopic == source.subtopic
+            and existing.source_role == source.source_role
             and list(existing.student_types) == list(source.student_types)
         )
 
@@ -163,7 +181,9 @@ class IngestionService:
             title=title,
             department=source.department,
             topic=source.topic,
+            subtopic=source.subtopic,
             source_type=source.source_type,
+            source_role=source.source_role,
             student_types=source.student_types,
             audience=infer_audience(source.url, source.department),
             document_type=classify_document_type(source.url, title, extracted.text),
@@ -171,9 +191,11 @@ class IngestionService:
             last_updated=extracted.last_updated,
             last_crawled_at=datetime.now(UTC),
             content_hash=content_hash,
+            http_status=http_status,
+            word_count=len(extracted.text.split()),
         )
 
-        chunk_results = self._chunker.split(extracted)
+        chunk_results = self._chunker_for(source).split(extracted)
         await self._repository.replace_chunks(document.id, chunk_results)
 
         status: IngestStatus = "updated" if existing is not None else "created"
@@ -210,7 +232,9 @@ class IngestionService:
             url=document.url,
             department=document.department,
             topic=document.topic,
+            subtopic=document.subtopic,
             source_type=document.source_type,
+            source_role=document.source_role,
             fallback_title=document.title,
             student_types=tuple(document.student_types),
         )
@@ -226,7 +250,7 @@ class IngestionService:
             logger.warning("rechunk_parse_failed", url=source.url, error=str(exc))
             return IngestResult(url=source.url, status="failed", error=str(exc))
 
-        chunk_results = self._chunker.split(extracted)
+        chunk_results = self._chunker_for(source).split(extracted)
         await self._repository.replace_chunks(document.id, chunk_results)
         logger.info("rechunk_document_rechunked", url=source.url, chunk_count=len(chunk_results))
         return IngestResult(url=source.url, status="updated", chunk_count=len(chunk_results))

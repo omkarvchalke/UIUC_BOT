@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from app.models.conversation_session import StudentType
-from app.models.document import SourceType, Topic
+from app.models.document import SourceRole, SourceType, Topic
 
 
 @dataclass(frozen=True)
@@ -23,3 +23,10 @@ class SourceConfig:
     source_type: SourceType
     fallback_title: str
     student_types: tuple[StudentType, ...] = field(default_factory=tuple)
+    # Both optional and both default None: most domain-file entries don't need a category
+    # subtopic (only topics like INTERNATIONAL_STUDENTS_IMMIGRATION split into several), and
+    # source_role is left unset rather than forced (Source Manifest V2, Part 3) for any entry
+    # this manifest can't confidently classify -- role_chunk_config() and priority.py both treat
+    # a None role as "use the untuned default," never as an error.
+    subtopic: str | None = None
+    source_role: SourceRole | None = None

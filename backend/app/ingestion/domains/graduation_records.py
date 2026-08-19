@@ -24,9 +24,9 @@ SEEDS: tuple[CrawlSeed, ...] = (
     # "ILLINOIS ARCH POWERBLEND HOOD", "ILLINOIS BLOCK I STADIUM S/S
     # T-SHIRT", ...), none of it informational content a campus assistant
     # should ever cite. It was previously all dumped into
-    # Topic.STUDENT_ORGANIZATIONS as a "least-wrong bucket" (see SOURCES
+    # Topic.STUDENT_ORGANIZATIONS_ENGAGEMENT as a "least-wrong bucket" (see SOURCES
     # below) and was skewing that audit's reclassification toward
-    # Topic.STUDENT_EMPLOYMENT instead (nav-boilerplate-driven, not
+    # Topic.CAREER_EMPLOYMENT instead (nav-boilerplate-driven, not
     # content-driven -- Career Center pages share the same
     # jobs/Handshake-heavy site chrome). Deleted the product pages from the
     # corpus; kept the handful of genuinely informational pages (textbook
@@ -37,39 +37,45 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://commencement.illinois.edu/",
         department="Office of the Registrar",
-        topic=Topic.ACADEMIC_CALENDAR,
+        topic=Topic.ACADEMIC_CALENDAR_GRADUATION,
         source_type=SourceType.HTML,
         fallback_title="Illinois Commencement",
     ),
-    # FINANCIAL_AID, not a "least-wrong bucket": textbooks are a real,
-    # commonly-asked-about cost of attendance ("Where do I buy textbooks?"
-    # was one of the 200 sweep questions), closer to "paying for college"
-    # than any other topic here.
+    # CAMPUS_SERVICES_FACILITIES, not FINANCIAL_AID_SCHOLARSHIPS: the previous taxonomy's
+    # FINANCIAL_AID topic explicitly named "buying textbooks" in its description specifically to
+    # fix a real regression ("Where do I buy textbooks?" was scoring below threshold without
+    # it), and that reasoning was sound at the time -- textbooks genuinely are a cost-of-
+    # attendance question. Source Manifest V2's own per-URL classification, however, places
+    # these bookstore pages under Campus Services & Facilities (alongside the Illini Union
+    # building and i-card services), not under either financial-aid topic -- followed here since
+    # V2 is the authoritative source for this migration. "buying textbooks" moved to
+    # CAMPUS_SERVICES_FACILITIES's description in topic_classifier.py to preserve the underlying
+    # fix without contradicting V2's placement of the actual pages.
     SourceConfig(
         url="https://bookstore.illinois.edu/",
         department="Illini Union Bookstore",
-        topic=Topic.FINANCIAL_AID,
+        topic=Topic.CAMPUS_SERVICES_FACILITIES,
         source_type=SourceType.HTML,
         fallback_title="Illini Union Bookstore",
     ),
     SourceConfig(
         url="https://bookstore.illinois.edu/site_textbookfaq.asp",
         department="Illini Union Bookstore",
-        topic=Topic.FINANCIAL_AID,
+        topic=Topic.CAMPUS_SERVICES_FACILITIES,
         source_type=SourceType.HTML,
         fallback_title="Textbook FAQ",
     ),
     SourceConfig(
         url="https://bookstore.illinois.edu/site_buyback_info.asp",
         department="Illini Union Bookstore",
-        topic=Topic.FINANCIAL_AID,
+        topic=Topic.CAMPUS_SERVICES_FACILITIES,
         source_type=SourceType.HTML,
         fallback_title="Textbook Buyback",
     ),
     SourceConfig(
         url="https://bookstore.illinois.edu/site_text_options.asp",
         department="Illini Union Bookstore",
-        topic=Topic.FINANCIAL_AID,
+        topic=Topic.CAMPUS_SERVICES_FACILITIES,
         source_type=SourceType.HTML,
         fallback_title="Textbook Options",
     ),

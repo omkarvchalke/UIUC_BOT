@@ -57,7 +57,7 @@ SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         url="https://mckinley.illinois.edu/fees/health-service-fee",
         department="McKinley Health Center",
-        topic=Topic.HEALTH_INSURANCE,
+        topic=Topic.HEALTH_WELLNESS,
         source_type=SourceType.HTML,
         fallback_title="Health Service Fee",
     ),
@@ -67,7 +67,7 @@ SOURCES: tuple[SourceConfig, ...] = (
         # No dedicated "mental health" topic exists in this enum; HEALTH_INSURANCE
         # is the closest fit and already covers McKinley Health Center's
         # health-service content for the same reason.
-        topic=Topic.HEALTH_INSURANCE,
+        topic=Topic.HEALTH_WELLNESS,
         source_type=SourceType.HTML,
         fallback_title="Counseling Center",
     ),
